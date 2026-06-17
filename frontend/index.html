@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wayfarer · AI Travel Planner</title>
+  <meta name="description" content="A multi-agent AI travel planner with a human-in-the-loop approval gate. Research, plan, review, finalize." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- ─── Top navigation ───────────────────────────────────────── -->
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Wayfarer home">
+      <span class="brand-mark"><i class="fa-solid fa-compass"></i></span>
+      <span class="brand-name">Wayfarer</span>
+    </a>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#agents">Agents</a>
+      <span class="api-pill" id="api-status" title="Backend connection">
+        <span class="dot"></span><span id="api-status-text">Checking API…</span>
+      </span>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- ─── Hero / Form ────────────────────────────────────────── -->
+    <section class="hero" id="planner">
+      <div class="hero-copy">
+        <p class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Multi-agent · Human-in-the-loop</p>
+        <h1>Plan a trip worth taking.</h1>
+        <p class="hero-sub">
+          Our agents research your destination, draft a day-by-day itinerary with a
+          budget breakdown, then <strong>pause for your approval</strong>. Approve,
+          reject, or refine — you stay in control.
+        </p>
+        <ul class="hero-points">
+          <li><i class="fa-solid fa-circle-check"></i> Live research &amp; weather-aware days</li>
+          <li><i class="fa-solid fa-circle-check"></i> Transparent budget allocation</li>
+          <li><i class="fa-solid fa-circle-check"></i> Review gate before anything is final</li>
+        </ul>
+      </div>
+
+      <div class="form-card" id="form-card">
+        <h2 class="card-title"><i class="fa-solid fa-paper-plane"></i> Start a plan</h2>
+        <form id="plan-form" novalidate>
+          <div class="field">
+            <label for="destination">Destination</label>
+            <div class="input-wrap">
+              <i class="fa-solid fa-location-dot"></i>
+              <input type="text" id="destination" name="destination" placeholder="Kyoto, Japan" required minlength="2" />
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="start_date">Start date</label>
+              <div class="input-wrap">
+                <i class="fa-regular fa-calendar"></i>
+                <input type="date" id="start_date" name="start_date" required />
+              </div>
+            </div>
+            <div class="field">
+              <label for="end_date">End date</label>
+              <div class="input-wrap">
+                <i class="fa-regular fa-calendar-check"></i>
+                <input type="date" id="end_date" name="end_date" required />
+              </div>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="budget">Budget</label>
+              <div class="input-wrap">
+                <i class="fa-solid fa-coins"></i>
+                <input type="number" id="budget" name="budget" placeholder="2500" min="1" step="50" required />
+              </div>
+            </div>
+            <div class="field">
+              <label for="currency">Currency</label>
+              <div class="input-wrap">
+                <i class="fa-solid fa-money-bill-wave"></i>
+                <select id="currency" name="currency" required style="width: 100%; padding: 12px 14px 12px 38px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); font-family: inherit; font-size: .96rem; color: var(--ink); background: #fbfcfe; appearance: none; cursor: pointer;">
+                  <option value="USD" selected>USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="JPY">JPY (¥)</option>
+                  <option value="AUD">AUD ($)</option>
+                  <option value="CAD">CAD ($)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field">
+              <label for="travelers">Travelers</label>
+              <div class="input-wrap">
+                <i class="fa-solid fa-users"></i>
+                <input type="number" id="travelers" name="travelers" value="2" min="1" max="20" required />
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Interests</label>
+            <div class="chips" id="interest-chips">
+              <!-- chips injected by JS -->
+            </div>
+            <div class="input-wrap chip-input-wrap">
+              <i class="fa-solid fa-tag"></i>
+              <input type="text" id="interest-input" placeholder="Add an interest and press Enter…" />
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block" id="submit-btn">
+            <i class="fa-solid fa-route"></i> Build my itinerary
+          </button>
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ─── Live progress / pipeline ──────────────────────────────── -->
+    <section class="workspace" id="workspace" hidden>
+      <div class="workspace-head">
+        <div>
+          <h2 id="ws-destination">Your plan</h2>
+          <p class="ws-meta" id="ws-meta"></p>
+        </div>
+        <button class="btn btn-ghost" id="new-plan-btn"><i class="fa-solid fa-rotate-left"></i> New plan</button>
+      </div>
+
+      <!-- Pipeline stepper -->
+      <ol class="pipeline" id="pipeline" aria-label="Plan progress">
+        <li class="step" data-step="researching">
+          <span class="step-icon"><i class="fa-solid fa-magnifying-glass"></i></span>
+          <span class="step-label">Researching</span>
+        </li>
+        <li class="step" data-step="planning">
+          <span class="step-icon"><i class="fa-solid fa-pen-ruler"></i></span>
+          <span class="step-label">Planning</span>
+        </li>
+        <li class="step" data-step="awaiting_review">
+          <span class="step-icon"><i class="fa-solid fa-user-check"></i></span>
+          <span class="step-label">Your review</span>
+        </li>
+        <li class="step" data-step="completed">
+          <span class="step-icon"><i class="fa-solid fa-flag-checkered"></i></span>
+          <span class="step-label">Finalized</span>
+        </li>
+      </ol>
+
+      <!-- Working / loading banner -->
+      <div class="working-banner" id="working-banner">
+        <span class="spinner" aria-hidden="true"></span>
+        <span id="working-text">Agents are working…</span>
+      </div>
+
+      <!-- Draft + review gate -->
+      <div class="draft-area" id="draft-area" hidden>
+        <!-- Review gate -->
+        <div class="review-gate" id="review-gate" hidden>
+          <div class="gate-head">
+            <span class="gate-badge"><i class="fa-solid fa-circle-pause"></i> Awaiting your review</span>
+            <p>The draft below is ready. Approve it, request changes, or reject and restart.</p>
+          </div>
+          <div class="gate-actions">
+            <button class="btn btn-approve" data-action="approve"><i class="fa-solid fa-check"></i> Approve</button>
+            <button class="btn btn-modify" data-action="modify"><i class="fa-solid fa-pen"></i> Request changes</button>
+            <button class="btn btn-reject" data-action="reject"><i class="fa-solid fa-xmark"></i> Reject &amp; restart</button>
+          </div>
+          <div class="feedback-box" id="feedback-box" hidden>
+            <label for="feedback">What should the planner adjust?</label>
+            <textarea id="feedback" rows="3" placeholder="e.g. Add more food experiences and keep day 3 indoors."></textarea>
+            <div class="feedback-actions">
+              <button class="btn btn-primary" id="send-feedback"><i class="fa-solid fa-paper-plane"></i> Send to planner</button>
+              <button class="btn btn-ghost" id="cancel-feedback">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Itinerary render target -->
+        <div class="itinerary" id="itinerary"></div>
+      </div>
+    </section>
+
+    <!-- ─── How it works ───────────────────────────────────────── -->
+    <section class="how" id="how">
+      <h2 class="section-title">A pipeline you can trust</h2>
+      <p class="section-sub">Five focused nodes. One clear flow. You sit in the loop.</p>
+      <div class="flow">
+        <div class="flow-step"><span class="n">1</span><h3>Orchestrate</h3><p>Validates your request and frames the task for the agents.</p></div>
+        <i class="fa-solid fa-arrow-right flow-arrow"></i>
+        <div class="flow-step"><span class="n">2</span><h3>Research</h3><p>Web search and live weather gather grounded context.</p></div>
+        <i class="fa-solid fa-arrow-right flow-arrow"></i>
+        <div class="flow-step"><span class="n">3</span><h3>Plan</h3><p>Drafts day-by-day with a transparent budget split.</p></div>
+        <i class="fa-solid fa-arrow-right flow-arrow"></i>
+        <div class="flow-step gate"><span class="n">4</span><h3>Your gate</h3><p>Approve, modify, or reject. Nothing finalizes without you.</p></div>
+        <i class="fa-solid fa-arrow-right flow-arrow"></i>
+        <div class="flow-step"><span class="n">5</span><h3>Finalize</h3><p>Locks in your approved itinerary, ready to go.</p></div>
+      </div>
+    </section>
+
+    <!-- ─── Agents ─────────────────────────────────────────────── -->
+    <section class="agents" id="agents">
+      <h2 class="section-title">Meet the agents</h2>
+      <div class="agent-grid">
+        <article class="agent-card">
+          <div class="agent-icon research"><i class="fa-solid fa-magnifying-glass"></i></div>
+          <h3>Research Agent</h3>
+          <p>Pulls LLM-ready context from the web, folds in live weather so rainy days become indoor days, and checks real-time exchange rates.</p>
+          <ul><li><i class="fa-solid fa-globe"></i> web_search</li><li><i class="fa-solid fa-cloud-sun"></i> get_weather</li><li><i class="fa-solid fa-money-bill-transfer"></i> get_exchange_rate</li></ul>
+        </article>
+        <article class="agent-card">
+          <div class="agent-icon plan"><i class="fa-solid fa-pen-ruler"></i></div>
+          <h3>Planner Agent</h3>
+          <p>Turns findings and budget into concrete days, complete with smart packing lists dynamically generated for your trip duration and interests.</p>
+          <ul><li><i class="fa-solid fa-coins"></i> allocate_budget</li><li><i class="fa-solid fa-calendar-day"></i> build_day_schedule</li><li><i class="fa-solid fa-suitcase"></i> generate_packing_list</li></ul>
+        </article>
+        <article class="agent-card">
+          <div class="agent-icon human"><i class="fa-solid fa-user-check"></i></div>
+          <h3>Human Gate</h3>
+          <p>A real pause in the graph (LangGraph interrupt) that resumes exactly where it stopped — with your decision.</p>
+          <ul><li><i class="fa-solid fa-thumbs-up"></i> approve</li><li><i class="fa-solid fa-pen"></i> modify</li><li><i class="fa-solid fa-thumbs-down"></i> reject</li></ul>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p><span class="brand-mark small"><i class="fa-solid fa-compass"></i></span> Wayfarer — multi-agent LangGraph + FastAPI demo frontend.</p>
+    <p class="muted">Frontend talks to <code>POST /plan</code>, <code>GET /plan/{id}</code>, <code>POST /plan/{id}/review</code>, <code>GET /plan/{id}/final</code>.</p>
+  </footer>
+
+  <!-- Toast container -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

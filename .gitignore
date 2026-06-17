@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Env & secrets
+.env
+
+# LangGraph checkpoint store
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+checkpoints.sqlite*
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
