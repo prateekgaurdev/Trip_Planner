@@ -6,6 +6,7 @@ one-line change.
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,7 +25,9 @@ class Settings(BaseSettings):
     tavily_api_key: str = ""
 
     # Persistence — SQLite file backing LangGraph's checkpointer.
-    checkpoint_db: str = "checkpoints.sqlite"
+    # On Vercel, the root filesystem is read-only, so we use /tmp.
+    # Note: /tmp is ephemeral. For production Vercel, use PostgresSaver.
+    checkpoint_db: str = "/tmp/checkpoints.sqlite" if os.environ.get("VERCEL") else "checkpoints.sqlite"
 
     # When true, the LLM and search calls are replaced with deterministic
     # stubs. Lets the e2e test (and offline demos) run with zero API keys.

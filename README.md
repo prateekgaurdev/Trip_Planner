@@ -152,6 +152,20 @@ USE_STUBS=true pytest -q   # one e2e HITL round-trip: submit→reject→modify�
 
 ---
 
+## Deploying to Vercel
+
+The repository is configured for zero-config Vercel deployment. It handles the ephemeral filesystem, static frontend CDN distribution, and serverless lifespan intricacies automatically.
+
+1. Install the [Vercel CLI](https://vercel.com/cli) or import the repository in the Vercel Dashboard.
+2. Ensure you add your `GOOGLE_API_KEY` and `TAVILY_API_KEY` in the Vercel project's Environment Variables.
+3. Deploy!
+
+```bash
+vercel deploy --prod
+```
+
+---
+
 ## What I'd Do Differently in Production
 
 - Swap `SqliteSaver` → **`PostgresSaver`** for multi-instance / HA deployments.

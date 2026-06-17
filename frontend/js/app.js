@@ -452,7 +452,7 @@
   }
 
   function renderActivity(a, destination) {
-    if (typeof a === 'string') return `<div class="activity"><div class="a-body"><p class="a-title">${esc(a)}</p></div></div>`;
+    if (typeof a === 'string') return `<div class="activity"><div class="a-body"><div class="a-text"><p class="a-title">${esc(a)}</p></div></div></div>`;
     const time = a.time || a.start || a.when || a.period || '';
     const title = a.title || a.name || a.activity || a.label || '';
     const desc = a.description || a.detail || a.notes || '';
@@ -467,16 +467,18 @@
     
     // Only show images if there is a description (i.e. it's the finalized plan, not the short draft)
     const imgHTML = (desc && searchKeyword) ? 
-        `<div class="a-image"><img src="https://loremflickr.com/400/300/${encodeURIComponent(destName + ',' + searchKeyword)}?lock=${Math.floor(Math.random() * 1000)}" alt="${esc(searchKeyword)}" loading="lazy" onerror="this.parentElement.style.display='none'"/></div>` : '';
+        `<div class="a-image"><img src="https://loremflickr.com/600/400/${encodeURIComponent(destName + ',' + searchKeyword)}?lock=${Math.floor(Math.random() * 1000)}" alt="${esc(searchKeyword)}" loading="lazy" onerror="this.parentElement.style.display='none'"/></div>` : '';
 
     return `<div class="activity">
       ${time ? `<span class="a-time">${esc(time)}</span>` : ''}
       <div class="a-body">
-        <p class="a-title">${esc(title)}</p>
-        ${desc ? `<p class="a-desc">${esc(desc)}</p>` : ''}
+        <div class="a-text">
+          <p class="a-title">${esc(title)}</p>
+          ${desc ? `<p class="a-desc">${esc(desc)}</p>` : ''}
+          ${cost != null ? `<span class="a-cost">${money(cost)}</span>` : ''}
+        </div>
         ${imgHTML}
       </div>
-      ${cost != null ? `<span class="a-cost">${money(cost)}</span>` : ''}
     </div>`;
   }
 

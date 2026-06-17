@@ -1,0 +1,21 @@
+{
+  "outputDirectory": "frontend",
+  "rewrites": [
+    {
+      "source": "/plan(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/docs(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/openapi.json",
+      "destination": "/api/index"
+    }
+  ]
+}

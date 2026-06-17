@@ -52,11 +52,27 @@ def _thread(plan_id: str) -> dict[str, Any]:
     return {"configurable": {"thread_id": plan_id}}
 
 
-async def _current_state(graph, plan_id: str) -> dict[str, Any] | None:
+async def _current_state(plan_id: str) -> dict[str, Any] | None:
+    graph = await get_graph()
     snapshot = await graph.aget_state(_thread(plan_id))
     if not snapshot or not snapshot.values:
         return None
     return snapshot.values
+
+async def get_graph():
+    """Lazily initialize graph if lifespan isn't supported (e.g. on Vercel)."""
+    if not hasattr(app.state, "graph"):
+        # For serverless environments like Vercel where lifespan may not trigger
+        from app.graph import _build_uncompiled
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        from app.config import get_settings
+        
+        settings = get_settings()
+        saver = AsyncSqliteSaver.from_conn_string(settings.checkpoint_db)
+        # Keep connection open for the lifetime of the Lambda container
+        await saver.__aenter__()
+        app.state.graph = _build_uncompiled().compile(checkpointer=saver)
+    return app.state.graph
 
 
 @app.get("/health", tags=["meta"])
@@ -81,8 +97,9 @@ async def create_plan(req: PlanRequest) -> PlanCreatedResponse:
         },
     }
     # Runs to the interrupt() and returns; the checkpoint is now persisted.
-    await app.state.graph.ainvoke(initial, config=_thread(plan_id))
-    state = await _current_state(app.state.graph, plan_id)
+    graph = await get_graph()
+    await graph.ainvoke(initial, config=_thread(plan_id))
+    state = await _current_state(plan_id)
     return PlanCreatedResponse(
         plan_id=plan_id, status=(state or {}).get("status", "researching")
     )
@@ -91,7 +108,7 @@ async def create_plan(req: PlanRequest) -> PlanCreatedResponse:
 @app.get("/plan/{plan_id}", response_model=PlanStateResponse, tags=["plan"])
 async def get_plan(plan_id: str) -> PlanStateResponse:
     """Return the current checkpointed state (poll until awaiting_review)."""
-    state = await _current_state(app.state.graph, plan_id)
+    state = await _current_state(plan_id)
     if state is None:
         raise HTTPException(404, f"No plan with id {plan_id}")
     return PlanStateResponse(
@@ -113,7 +130,7 @@ async def review_plan(plan_id: str, req: ReviewRequest) -> PlanStateResponse:
     call inside human_gate, and the graph continues: approve→finalize,
     reject→research, modify→planner.
     """
-    state = await _current_state(app.state.graph, plan_id)
+    state = await _current_state(plan_id)
     if state is None:
         raise HTTPException(404, f"No plan with id {plan_id}")
     if state.get("status") != "awaiting_review":
@@ -122,12 +139,13 @@ async def review_plan(plan_id: str, req: ReviewRequest) -> PlanStateResponse:
             f"Plan is '{state.get('status')}', not awaiting_review; cannot review now.",
         )
 
-    await app.state.graph.ainvoke(
+    graph = await get_graph()
+    await graph.ainvoke(
         Command(resume={"action": req.action, "feedback": req.feedback}),
         config=_thread(plan_id),
     )
 
-    new_state = await _current_state(app.state.graph, plan_id)
+    new_state = await _current_state(plan_id)
     return PlanStateResponse(
         plan_id=plan_id,
         status=(new_state or {}).get("status", "unknown"),
@@ -142,7 +160,7 @@ async def review_plan(plan_id: str, req: ReviewRequest) -> PlanStateResponse:
 @app.get("/plan/{plan_id}/final", response_model=FinalPlanResponse, tags=["plan"])
 async def get_final(plan_id: str) -> FinalPlanResponse:
     """Return the finalised plan, or 409 if it isn't approved yet."""
-    state = await _current_state(app.state.graph, plan_id)
+    state = await _current_state(plan_id)
     if state is None:
         raise HTTPException(404, f"No plan with id {plan_id}")
     if state.get("status") != "completed":
@@ -154,5 +172,6 @@ async def get_final(plan_id: str) -> FinalPlanResponse:
     )
 
 frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+if not os.environ.get("VERCEL"):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
