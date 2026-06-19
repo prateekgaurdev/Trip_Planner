@@ -226,6 +226,27 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; background: #eef1
   transition: width .65s cubic-bezier(.4, 0, .2, 1);
   box-shadow: 0 0 12px rgba(13, 148, 136, .35);
 }
+.working-banner.gate-pause {
+  border-color: #f6e0b3;
+  background: linear-gradient(135deg, #fffaf0 0%, #f8fafc 100%);
+  box-shadow: 0 4px 18px rgba(245, 158, 11, .1);
+}
+.working-banner.gate-pause .spinner { display: none; }
+.working-banner.gate-pause .working-head::before {
+  content: '\f28b';
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-size: 1.15rem;
+  color: var(--warn);
+  flex-shrink: 0;
+  line-height: 1;
+  margin-top: 2px;
+}
+.working-banner.gate-pause .progress-shimmer { animation: none; opacity: 0; }
+.working-banner.gate-pause .progress-fill {
+  background: linear-gradient(90deg, var(--accent), #fbbf24);
+  box-shadow: 0 0 10px rgba(245, 158, 11, .25);
+}
 .working-banner.over-draft {
   margin-bottom: 20px;
   border-color: #b8e0db;

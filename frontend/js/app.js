@@ -81,6 +81,11 @@
       'Tavily — gathering new travel context…',
       'Gemini — rebuilding research from scratch…',
     ],
+    awaiting_review: [
+      'Draft ready — optionally pick a flight or hotel.',
+      'Approve when you\'re happy, or request changes.',
+      'Nothing finalizes without your say-so.',
+    ],
   };
   const POLL_MS = 750;
   const POLL_MS_IDLE = 1200;
@@ -383,11 +388,46 @@
     state.progressTimer = setInterval(() => bumpProgress(status), 400);
   }
 
+  function startGateDisplay(status, serverMessage) {
+    stopProgressAnim();
+    state.workingPhase = status;
+    state.stepStartedAt = Date.now();
+    const cfg = STEP_PROGRESS[status] || { base: 60, max: 62 };
+    state.progressPct = cfg.base;
+    if (els.progressFill) els.progressFill.style.width = `${state.progressPct}%`;
+
+    const meta = STEP_META[status];
+    if (meta && els.progressStep) {
+      els.progressStep.textContent = `Step ${meta.n} of 5 · ${meta.label}`;
+    }
+    if (meta) els.workingText.textContent = meta.title;
+
+    const lines = linesForStatus(status, serverMessage || state.lastServerMessage);
+    if (lines.length) {
+      state.lineIdx = 0;
+      setStatusLine(lines[0]);
+      if (lines.length > 1) {
+        state.lineTimer = setInterval(() => {
+          const fresh = linesForStatus(status, state.lastServerMessage);
+          state.lineIdx = (state.lineIdx + 1) % fresh.length;
+          setStatusLine(fresh[state.lineIdx]);
+        }, 4000);
+      }
+    }
+  }
+
   function showWorking(status, progressMessage, restartAnim = true) {
     const busy = ['researching', 'planning', 'finalizing'].includes(status) || !status;
-    els.workingBanner.style.display = busy ? 'flex' : 'none';
+    const atGate = status === 'awaiting_review';
+    const visible = busy || atGate;
+
+    els.workingBanner.style.display = visible ? 'flex' : 'none';
+    els.workingBanner.classList.toggle('gate-pause', atGate);
+    els.workingBanner.classList.toggle('over-draft', atGate || status === 'finalizing');
+
     const meta = STEP_META[status];
-    els.workingText.textContent = meta?.title || 'Agents are working…';
+    if (meta && !atGate) els.workingText.textContent = meta.title || 'Agents are working…';
+    else if (meta && atGate) els.workingText.textContent = meta.title;
 
     if (progressMessage) {
       state.lastServerMessage = progressMessage;
@@ -399,6 +439,12 @@
       if (restartAnim || phase !== state.workingPhase) {
         state.workingPhase = phase;
         startProgressAnim(status, progressMessage || state.lastServerMessage);
+      }
+    } else if (atGate) {
+      if (restartAnim || state.workingPhase !== status) {
+        startGateDisplay(status, progressMessage || state.lastServerMessage);
+      } else if (progressMessage) {
+        setStatusLine(progressMessage);
       }
     } else {
       state.workingPhase = null;
@@ -444,17 +490,23 @@
     };
 
     setSubmitting(true);
+    openWorkspace(destination, payload);
+    showWorking('researching', `Starting research on ${destination}…`, true);
+    state.status = 'researching';
+
     try {
       const res = await WayfarerAPI.createPlan(payload);
       state.planId = res && (res.plan_id || res.id || res.planId);
       if (!state.planId) throw new Error('No plan id returned by the server.');
 
-      openWorkspace(destination, payload);
       saveSession({ destination, payload });
       toast('Plan started — agents are working.', 'ok');
       startPolling();
       poll();
     } catch (err) {
+      els.workspace.hidden = true;
+      stopProgressAnim();
+      els.workingBanner.style.display = 'none';
       formErr(err.message || 'Could not create the plan. Is the API running?');
       toast(err.message || 'Failed to create plan.', 'bad');
     } finally {
@@ -481,7 +533,6 @@
       els.itinerary.innerHTML = '';
       if (window.WayfarerMaps) window.WayfarerMaps.destroyAll();
       setPipeline('researching');
-      showWorking('researching');
       els.workspace.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
@@ -496,7 +547,6 @@
     state.polling = false;
     state.poll404Retries = 0;
     if (state.pollTimer) clearTimeout(state.pollTimer);
-    stopProgressAnim();
   }
 
   async function poll() {
@@ -556,12 +606,7 @@
         els.itinerary.innerHTML = '';
       } else {
         els.draftArea.hidden = false;
-        els.workingBanner.style.display = 'flex';
-        els.workingBanner.classList.add('over-draft');
       }
-    }
-    if (status !== 'finalizing') {
-      els.workingBanner.classList.remove('over-draft');
     }
   }
 
@@ -772,7 +817,7 @@
       toast(err.message || 'Review failed.', 'bad');
       showReviewGate(true);
       setPipeline('awaiting_review');
-      showWorking('awaiting_review');
+      showWorking('awaiting_review', 'Draft ready — pick optional flight/hotel, then approve.', true);
     }
   }
 
