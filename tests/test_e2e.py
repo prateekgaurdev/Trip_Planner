@@ -17,6 +17,7 @@ import pytest
 os.environ["USE_STUBS"] = "true"
 os.environ["CHECKPOINT_DB"] = ":memory:"
 os.environ["GRAPH_BACKGROUND"] = "false"
+os.environ.pop("VERCEL", None)
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 

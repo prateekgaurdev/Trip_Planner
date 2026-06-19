@@ -10,10 +10,22 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _ENV_FILE = _PROJECT_ROOT / ".env"
+_VERCEL_CHECKPOINT = "/tmp/wayfarer-checkpoints.sqlite"
+
+
+def prepare_checkpoint_path(path: str) -> str:
+    """Ensure the SQLite parent directory exists (required on Vercel /tmp)."""
+    if path == ":memory:":
+        return path
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    return path
 
 
 class Settings(BaseSettings):
@@ -37,9 +49,8 @@ class Settings(BaseSettings):
     serpapi_key: str = ""
 
     # Persistence — SQLite file backing LangGraph's checkpointer.
-    # On Vercel, the root filesystem is read-only, so we use /tmp.
-    # Note: /tmp is ephemeral. For production Vercel, use PostgresSaver.
-    checkpoint_db: str = "/tmp/checkpoints.sqlite" if os.environ.get("VERCEL") else "checkpoints.sqlite"
+    # On Vercel the project filesystem is read-only; use /tmp (see validator).
+    checkpoint_db: str = "checkpoints.sqlite"
 
     # When true, the LLM and search calls are replaced with deterministic
     # stubs. Lets the e2e test (and offline demos) run with zero API keys.
@@ -48,6 +59,15 @@ class Settings(BaseSettings):
     # When true, POST /plan and /review return immediately and the graph runs
     # in the background. Disabled automatically on Vercel (serverless).
     graph_background: bool = True
+
+    @model_validator(mode="after")
+    def _normalize_checkpoint_db(self) -> "Settings":
+        if os.environ.get("VERCEL"):
+            db = (self.checkpoint_db or "").strip()
+            if not db.startswith("/tmp/") and db != ":memory:":
+                self.checkpoint_db = _VERCEL_CHECKPOINT
+        prepare_checkpoint_path(self.checkpoint_db)
+        return self
 
 
 def graph_runs_in_background() -> bool:

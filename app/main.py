@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
 
-from app.config import get_settings, graph_runs_in_background, stubs_enabled
+from app.config import get_settings, graph_runs_in_background, prepare_checkpoint_path, stubs_enabled
 from app.graph import build_graph
 from app.graph_runner import invoke_graph, is_plan_running, start_graph_run
 from app.pipeline_log import (
@@ -55,6 +55,10 @@ async def lifespan(app: FastAPI):
     get_settings.cache_clear()
     settings = get_settings()
     startup_banner(settings)
+    # Vercel: skip startup SQLite — filesystem init is lazy in get_graph().
+    if os.environ.get("VERCEL"):
+        yield
+        return
     async with build_graph() as graph:
         app.state.graph = graph
         yield
@@ -142,8 +146,9 @@ async def get_graph():
         from app.graph import _build_uncompiled
 
         settings = get_settings()
+        db_path = prepare_checkpoint_path(settings.checkpoint_db)
         if not getattr(app.state, "checkpointer", None):
-            cm = AsyncSqliteSaver.from_conn_string(settings.checkpoint_db)
+            cm = AsyncSqliteSaver.from_conn_string(db_path)
             app.state.checkpointer = await cm.__aenter__()
             app.state._checkpointer_cm = cm
 

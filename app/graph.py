@@ -14,7 +14,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 
-from app.config import get_settings
+from app.config import get_settings, prepare_checkpoint_path
 from app.nodes import (
     finalize_expand,
     finalize_pack,
@@ -95,5 +95,6 @@ async def build_graph() -> AsyncIterator:
     connection is opened once at startup and closed cleanly on shutdown.
     """
     settings = get_settings()
-    async with AsyncSqliteSaver.from_conn_string(settings.checkpoint_db) as saver:
+    db_path = prepare_checkpoint_path(settings.checkpoint_db)
+    async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
         yield _build_uncompiled().compile(checkpointer=saver)
