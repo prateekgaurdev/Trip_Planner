@@ -181,10 +181,22 @@
 
       <!-- Working / loading banner -->
       <div class="working-banner" id="working-banner">
-        <span class="spinner" aria-hidden="true"></span>
-        <div class="working-copy">
-          <span id="working-text">Agents are working…</span>
-          <span class="thinking-line" id="thinking-line" aria-live="polite"></span>
+        <div class="working-head">
+          <span class="spinner" aria-hidden="true"></span>
+          <div class="working-copy">
+            <span class="working-title" id="working-text">Agents are working…</span>
+            <span class="working-sub" id="progress-step">Step 1 of 5 · Researching</span>
+          </div>
+        </div>
+        <div class="progress-wrap" aria-hidden="true">
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+            <div class="progress-shimmer"></div>
+          </div>
+        </div>
+        <div class="status-lines" id="status-lines" aria-live="polite" aria-atomic="true">
+          <span class="status-line visible" id="status-line-a"></span>
+          <span class="status-line" id="status-line-b"></span>
         </div>
       </div>
 

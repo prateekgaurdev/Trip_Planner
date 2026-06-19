@@ -31,6 +31,8 @@ from app.pipeline_log import (
     startup_banner,
 )
 from app.schemas import (
+    ActivityImageLookupRequest,
+    ActivityImageLookupResponse,
     FinalPlanResponse,
     PlanCreatedResponse,
     PlanRequest,
@@ -142,6 +144,15 @@ async def health() -> dict[str, Any]:
         "openrouteservice_api_key_set": bool(settings.openrouteservice_api_key),
         "serpapi_key_set": bool(settings.serpapi_key),
     }
+
+
+@app.post("/images/lookup", response_model=ActivityImageLookupResponse, tags=["images"])
+async def lookup_activity_image(req: ActivityImageLookupRequest) -> ActivityImageLookupResponse:
+    """Resolve a Wikipedia thumbnail for one activity (parallel-friendly, cached)."""
+    from app.tools import lookup_activity_image as _lookup
+
+    result = await _lookup(req.destination, req.title, req.location_name)
+    return ActivityImageLookupResponse(**result)
 
 
 @app.post("/plan", response_model=PlanCreatedResponse, status_code=201, tags=["plan"])

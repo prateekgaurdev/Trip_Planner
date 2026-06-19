@@ -22,45 +22,64 @@
     pollTimer: null,
     restoring: false,
     poll404Retries: 0,
-    thinkingTimer: null,
-    thinkingIdx: 0,
+    progressTimer: null,
+    lineTimer: null,
+    lineIdx: 0,
+    lineSlot: 'a',
+    progressPct: 0,
+    stepStartedAt: 0,
+    lastServerMessage: '',
+    workingPhase: null,
     travelPick: { flight: null, hotel: null },
     travelPickData: null,
   };
 
   const STEPS = ['researching', 'planning', 'awaiting_review', 'finalizing', 'completed'];
-  const STEP_LABEL = {
-    researching: 'Researching your destination…',
-    planning: 'Planning your itinerary…',
-    awaiting_review: 'Paused — waiting for your review.',
-    finalizing: 'Finalizing your approved trip…',
-    completed: 'Plan finalized.',
+  const STEP_META = {
+    researching: { n: 1, label: 'Researching', title: 'Researching your destination…' },
+    planning: { n: 2, label: 'Planning', title: 'Planning your itinerary…' },
+    awaiting_review: { n: 3, label: 'Your review', title: 'Paused — waiting for your review.' },
+    finalizing: { n: 4, label: 'Finalizing', title: 'Finalizing your approved trip…' },
+    completed: { n: 5, label: 'Complete', title: 'Plan finalized.' },
   };
-  const THINKING_LINES = {
+  const STEP_PROGRESS = {
+    researching: { base: 8, max: 32 },
+    planning: { base: 34, max: 58 },
+    awaiting_review: { base: 60, max: 62 },
+    finalizing: { base: 64, max: 94 },
+    completed: { base: 100, max: 100 },
+  };
+  const PIPELINE_LINES = {
     researching: [
-      'Scanning travel guides and local tips…',
-      'Checking weather for your travel dates…',
-      'Looking up currency rates…',
-      'Distilling highlights with AI…',
+      'Starting research on your destination…',
+      'Searching web, weather & currency in parallel…',
+      'Tavily — scanning travel guides and local tips…',
+      'Open-Meteo — checking forecast for your dates…',
+      'Gemini — distilling highlights and practical tips…',
     ],
     planning: [
-      'Splitting your budget across lodging, food & activities…',
-      'Scheduling sights day by day…',
-      'Matching indoor/outdoor plans to the forecast…',
-      'Writing your draft itinerary…',
+      'Research complete — building your day-by-day plan…',
+      'Splitting budget across lodging, food & activities…',
+      'Gemini.planner_draft — scheduling real venues by day…',
+      'SerpAPI — fetching optional flight & hotel picks…',
+      'Draft ready for your review…',
     ],
     finalizing: [
-      'Expanding activities with times and descriptions…',
-      'Mapping routes between sights…',
-      'Applying your travel selections…',
+      'Approved — expanding your itinerary…',
+      'Gemini.finalize_expand — adding times & descriptions…',
+      'Geocoding every stop on your route…',
+      'RouteMap — computing walking & driving legs…',
+      'Almost there…',
     ],
     modifying: [
-      'Applying your feedback to the draft…',
+      'Sending your notes to the planner agent…',
       'Rebalancing days and activities…',
+      'Gemini.planner_draft — revising with your feedback…',
     ],
     rejecting: [
-      'Running a fresh web search…',
-      'Rebuilding research from scratch…',
+      'Restarting — fresh web search and weather…',
+      'Tavily — gathering new travel context…',
+      'Gemini — rebuilding research from scratch…',
     ],
   };
   const POLL_MS = 750;
@@ -82,7 +101,10 @@
     pipeline: $('#pipeline'),
     workingBanner: $('#working-banner'),
     workingText: $('#working-text'),
-    thinkingLine: $('#thinking-line'),
+    progressStep: $('#progress-step'),
+    progressFill: $('#progress-fill'),
+    statusLineA: $('#status-line-a'),
+    statusLineB: $('#status-line-b'),
     travelReview: $('#travel-review'),
 
     draftArea: $('#draft-area'),
@@ -288,38 +310,106 @@
     });
   }
 
-  function stopThinking() {
-    if (state.thinkingTimer) clearInterval(state.thinkingTimer);
-    state.thinkingTimer = null;
+  function stopProgressAnim() {
+    if (state.progressTimer) clearInterval(state.progressTimer);
+    if (state.lineTimer) clearInterval(state.lineTimer);
+    state.progressTimer = null;
+    state.lineTimer = null;
   }
 
-  function startThinking(status, serverMessage) {
-    stopThinking();
-    const key = status === 'planning' && state.reviewMode ? state.reviewMode : status;
-    const lines = THINKING_LINES[key] || THINKING_LINES[status] || [];
-    if (serverMessage) {
-      els.thinkingLine.textContent = serverMessage;
-    } else if (lines.length) {
-      state.thinkingIdx = 0;
-      els.thinkingLine.textContent = lines[0];
-      state.thinkingTimer = setInterval(() => {
-        state.thinkingIdx = (state.thinkingIdx + 1) % lines.length;
-        els.thinkingLine.textContent = lines[state.thinkingIdx];
-      }, 2800);
-    } else {
-      els.thinkingLine.textContent = '';
+  function setStatusLine(text) {
+    if (!text) return;
+    const a = els.statusLineA;
+    const b = els.statusLineB;
+    const active = state.lineSlot === 'a' ? a : b;
+    if (active.textContent === text) return;
+    const next = state.lineSlot === 'a' ? b : a;
+    next.textContent = text;
+    next.classList.add('visible');
+    active.classList.remove('visible');
+    state.lineSlot = state.lineSlot === 'a' ? 'b' : 'a';
+  }
+
+  function pipelineKey(status) {
+    if (status === 'planning' && state.reviewMode === 'modifying') return 'modifying';
+    if (status === 'researching' && state.reviewMode === 'rejecting') return 'rejecting';
+    return status;
+  }
+
+  function linesForStatus(status, serverMessage) {
+    const key = pipelineKey(status);
+    const lines = (PIPELINE_LINES[key] || PIPELINE_LINES[status] || []).slice();
+    if (serverMessage && !lines.includes(serverMessage)) {
+      lines.unshift(serverMessage);
     }
+    return lines;
   }
 
-  function showWorking(status, progressMessage) {
+  function bumpProgress(status) {
+    const cfg = STEP_PROGRESS[status];
+    if (!cfg || !els.progressFill) return;
+    const elapsed = (Date.now() - state.stepStartedAt) / 1000;
+    const creep = Math.min(1, elapsed / (status === 'finalizing' ? 28 : 18));
+    const target = cfg.base + (cfg.max - cfg.base) * creep;
+    state.progressPct = Math.max(state.progressPct, Math.min(cfg.max, target));
+    els.progressFill.style.width = `${state.progressPct.toFixed(1)}%`;
+  }
+
+  function startProgressAnim(status, serverMessage) {
+    stopProgressAnim();
+    state.stepStartedAt = Date.now();
+    const cfg = STEP_PROGRESS[status] || { base: 4, max: 12 };
+    state.progressPct = cfg.base;
+    if (els.progressFill) els.progressFill.style.width = `${state.progressPct}%`;
+
+    const meta = STEP_META[status];
+    if (meta && els.progressStep) {
+      els.progressStep.textContent = `Step ${meta.n} of 5 · ${meta.label}`;
+    }
+
+    const lines = linesForStatus(status, serverMessage);
+    if (lines.length) {
+      state.lineIdx = 0;
+      setStatusLine(lines[0]);
+      if (lines.length > 1) {
+        state.lineTimer = setInterval(() => {
+          const fresh = linesForStatus(status, state.lastServerMessage);
+          state.lineIdx = (state.lineIdx + 1) % fresh.length;
+          setStatusLine(fresh[state.lineIdx]);
+        }, 3200);
+      }
+    }
+
+    state.progressTimer = setInterval(() => bumpProgress(status), 400);
+  }
+
+  function showWorking(status, progressMessage, restartAnim = true) {
     const busy = ['researching', 'planning', 'finalizing'].includes(status) || !status;
     els.workingBanner.style.display = busy ? 'flex' : 'none';
-    els.workingText.textContent = STEP_LABEL[status] || 'Agents are working…';
+    const meta = STEP_META[status];
+    els.workingText.textContent = meta?.title || 'Agents are working…';
+
+    if (progressMessage) {
+      state.lastServerMessage = progressMessage;
+      setStatusLine(progressMessage);
+    }
+
     if (busy) {
-      startThinking(status, progressMessage);
+      const phase = pipelineKey(status);
+      if (restartAnim || phase !== state.workingPhase) {
+        state.workingPhase = phase;
+        startProgressAnim(status, progressMessage || state.lastServerMessage);
+      }
     } else {
-      stopThinking();
-      els.thinkingLine.textContent = progressMessage || '';
+      state.workingPhase = null;
+      stopProgressAnim();
+      if (!progressMessage) {
+        els.statusLineA.textContent = '';
+        els.statusLineB.textContent = '';
+        els.statusLineA.classList.add('visible');
+        els.statusLineB.classList.remove('visible');
+        state.lineSlot = 'a';
+      }
     }
   }
 
@@ -406,7 +496,7 @@
     state.polling = false;
     state.poll404Retries = 0;
     if (state.pollTimer) clearTimeout(state.pollTimer);
-    stopThinking();
+    stopProgressAnim();
   }
 
   async function poll() {
@@ -435,10 +525,20 @@
     if (!data) return;
     const status = data.status || data.plan_status;
     const progress = data.progress_message || data.progressMessage || '';
+    const prevStatus = state.status;
+    const statusChanged = status !== prevStatus;
     state.status = status;
-    state.reviewMode = null;
+
+    if (statusChanged) {
+      if (status === 'awaiting_review' || status === 'completed') {
+        state.reviewMode = null;
+      }
+      state.lastServerMessage = '';
+      state.workingPhase = null;
+    }
+
     setPipeline(status);
-    showWorking(status, progress);
+    showWorking(status, progress, statusChanged);
     saveSession({ preferences: data.preferences, destination: data.preferences?.destination });
 
     if (status === 'awaiting_review') {
@@ -457,7 +557,11 @@
       } else {
         els.draftArea.hidden = false;
         els.workingBanner.style.display = 'flex';
+        els.workingBanner.classList.add('over-draft');
       }
+    }
+    if (status !== 'finalizing') {
+      els.workingBanner.classList.remove('over-draft');
     }
   }
 
@@ -640,13 +744,13 @@
 
     if (action === 'reject') {
       setPipeline('researching');
-      showWorking('researching', 'Restarting — fresh web search and weather for your trip…');
+      showWorking('researching', 'Restarting — fresh web search and weather for your trip…', true);
     } else if (action === 'modify') {
       setPipeline('planning');
-      showWorking('planning', 'Sending your notes to the planner agent…');
+      showWorking('planning', 'Sending your notes to the planner agent…', true);
     } else {
       setPipeline('finalizing');
-      showWorking('finalizing', 'Approved — expanding your itinerary and mapping your route…');
+      showWorking('finalizing', 'Approved — expanding your itinerary and mapping your route…', true);
     }
 
     try {
@@ -675,6 +779,8 @@
   // ─── Final plan ─────────────────────────────────────────
   async function loadFinal(isRestore = false) {
     setPipeline('completed');
+    stopProgressAnim();
+    if (els.progressFill) els.progressFill.style.width = '100%';
     els.workingBanner.style.display = 'none';
     try {
       const data = await WayfarerAPI.getFinal(state.planId);
@@ -702,6 +808,7 @@
   }
   function renderFinal(data) {
     const plan = pickPlan(data);
+    const dest = plan.destination || els.wsDestination.textContent || '';
     els.draftArea.hidden = false;
     els.reviewGate.hidden = true;
     els.itinerary.innerHTML =
@@ -712,6 +819,7 @@
       window.WayfarerMaps.bindRouteSection(plan.route_map);
     }
     bindTravelTabs();
+    hydrateActivityImages(dest);
     els.itinerary.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -902,6 +1010,62 @@
     </div>`;
   }
 
+  function activityImageKey(title, location) {
+    return `${(location || '').trim().toLowerCase()}|${(title || '').trim().toLowerCase()}`;
+  }
+
+  function injectActivityImage(activityEl, url, alt) {
+    const body = activityEl.querySelector('.a-body');
+    if (!body || body.querySelector('.a-image')) return;
+    activityEl.dataset.imageLoaded = '1';
+    const wrap = document.createElement('div');
+    wrap.className = 'a-image';
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = alt;
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    img.classList.add('a-image-reveal');
+    img.onerror = () => wrap.remove();
+    wrap.appendChild(img);
+    body.appendChild(wrap);
+  }
+
+  function hydrateActivityImages(destination) {
+    const acts = els.itinerary.querySelectorAll('.activity[data-image-key]:not([data-image-loaded])');
+    if (!acts.length || !destination) return;
+
+    const resolved = state.imageResolved || (state.imageResolved = new Set());
+    const inflight = state.imageInflight || (state.imageInflight = new Set());
+    const cache = state.imageUrlCache || (state.imageUrlCache = {});
+
+    acts.forEach((el) => {
+      const key = el.dataset.imageKey;
+      if (!key || resolved.has(key) || inflight.has(key)) return;
+
+      const title = el.dataset.title || '';
+      const location = el.dataset.location || title;
+
+      if (cache[key]) {
+        injectActivityImage(el, cache[key], title || location);
+        resolved.add(key);
+        return;
+      }
+
+      inflight.add(key);
+      WayfarerAPI.lookupActivityImage({ destination, title, location_name: location })
+        .then((res) => {
+          resolved.add(key);
+          if (res?.image_url) {
+            cache[key] = res.image_url;
+            injectActivityImage(el, res.image_url, title || location);
+          }
+        })
+        .catch(() => resolved.add(key))
+        .finally(() => inflight.delete(key));
+    });
+  }
+
   function renderActivity(a, destination, isDraft) {
     if (typeof a === 'string') {
       return `<div class="activity">
@@ -915,14 +1079,21 @@
     const desc = a.description || a.detail || a.notes || '';
     const cost = a.cost ?? a.price ?? a.amount;
     
-    // Wikipedia image only when backend verified a title/location match
+    // Text-only by default; images appear silently when Wikipedia returns a match
     const imageUrl = (!isDraft && a.image_url) ? a.image_url : null;
     const destName = typeof destination === 'string' ? destination.split(',')[0] : '';
+    const locationName = a.location_name || a.location || '';
+    const lazyImage = !isDraft && !imageUrl && (title || locationName);
+    const imgKey = lazyImage ? activityImageKey(title, locationName || title) : '';
     
     const titleHTML = `<a href="https://www.google.com/search?q=${encodeURIComponent(destName + ' ' + title)}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line);">${esc(title)}</a>`;
 
     const imgHTML = imageUrl
       ? `<div class="a-image"><img src="${esc(imageUrl)}" alt="${esc(title)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.remove();"/></div>`
+      : '';
+
+    const activityAttrs = lazyImage
+      ? ` data-image-key="${esc(imgKey)}" data-title="${esc(title)}" data-location="${esc(locationName || title)}"`
       : '';
 
     const cumulative = a.cumulative_distance_km;
@@ -943,7 +1114,7 @@
       }
     }
 
-    return `<div class="activity">
+    return `<div class="activity"${activityAttrs}>
       ${time && !isDraft ? `<span class="a-time">${esc(time)}</span>` : ''}
       <div class="a-body" ${isDraft ? 'style="flex-direction: row; text-align: left; align-items: center;"' : ''}>
         <div class="a-text">

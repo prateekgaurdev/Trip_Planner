@@ -24,7 +24,6 @@ from app.tools import (
     allocate_budget,
     build_day_schedule,
     build_route_map,
-    enrich_activities_with_images,
     get_weather,
     web_search,
     get_exchange_rate,
@@ -254,26 +253,23 @@ async def finalize_expand(state: TripState) -> dict[str, Any]:
     existing_travel = state.get("travel_options")
     dest = prefs["destination"]
 
-    expanded, route_map_draft = await asyncio.gather(
-        llm.complete_json(
-            system=(
-                "You are an expert travel planner finalizing an approved itinerary. "
-                "Expand the skeletal day plan into a detailed, precise schedule. "
-                "Use accurate venue/landmark names in location_name for map routing. "
-                "Each activity needs: time (HH:MM), title, description (1-2 sentences), "
-                "and location_name (official name of the place). "
-                "Do not include airport arrivals, departures, or hotel check-ins."
-            ),
-            user=(
-                f"Destination: {dest}\n"
-                f"Draft schedule: {draft_days}\n"
-                f"Tips: {draft.get('tips', [])}\n"
-                f"Planner notes: {draft.get('planner_notes', [])}\n"
-                "Return JSON with key 'days' — each day has day_number, date, title, description, "
-                "and activities (time, title, description, location_name)."
-            ),
+    expanded = await llm.complete_json(
+        system=(
+            "You are an expert travel planner finalizing an approved itinerary. "
+            "Expand the skeletal day plan into a detailed, precise schedule. "
+            "Use accurate venue/landmark names in location_name for map routing. "
+            "Each activity needs: time (HH:MM), title, description (1-2 sentences), "
+            "and location_name (official name of the place). "
+            "Do not include airport arrivals, departures, or hotel check-ins."
         ),
-        build_route_map(dest, draft_days),
+        user=(
+            f"Destination: {dest}\n"
+            f"Draft schedule: {draft_days}\n"
+            f"Tips: {draft.get('tips', [])}\n"
+            f"Planner notes: {draft.get('planner_notes', [])}\n"
+            "Return JSON with key 'days' — each day has day_number, date, title, description, "
+            "and activities (time, title, description, location_name)."
+        ),
     )
 
     expanded_days = expanded.get("days") or draft_days
@@ -282,28 +278,11 @@ async def finalize_expand(state: TripState) -> dict[str, Any]:
     if not travel_options:
         travel_options = await fetch_travel_options(prefs)
 
-    route_map = route_map_draft
-    has_locations = any(
-        isinstance(a, dict) and (a.get("location_name") or a.get("title"))
-        for day in expanded_days
-        for a in (day.get("activities") or [])
-    )
-
-    async def _refine_map() -> dict[str, Any]:
-        if has_locations and expanded.get("days"):
-            refined = await build_route_map(dest, expanded_days)
-            if refined.get("available"):
-                return refined
-        return route_map_draft
-
-    route_map, expanded_days = await asyncio.gather(
-        _refine_map(),
-        enrich_activities_with_images(dest, expanded_days),
-    )
+    route_map = await build_route_map(dest, expanded_days)
 
     return {
         "status": "finalizing",
-        "progress_message": "Wrapping up your finalized plan…",
+        "progress_message": "Expanding activities and mapping your route…",
         "_expanded_days": expanded_days,
         "_route_map": route_map,
         "_travel_options": travel_options,

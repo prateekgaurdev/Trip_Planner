@@ -956,11 +956,28 @@ def _normalize_label(text: str) -> str:
     return re.sub(r"[^a-z0-9\s]", " ", cleaned).strip()
 
 
+_TOKEN_ALIASES = {
+    "laxman": "lakshman",
+}
+
+
 def _label_tokens(text: str) -> set[str]:
     return {
-        w for w in _normalize_label(text).split()
+        _TOKEN_ALIASES.get(w, w)
+        for w in _normalize_label(text).split()
         if len(w) > 2 and w not in _IMAGE_STOPWORDS
     }
+
+
+def _wiki_thumb_url(thumbnail: dict[str, Any] | None) -> str | None:
+    if not thumbnail:
+        return None
+    url = thumbnail.get("url") or thumbnail.get("source")
+    if not url:
+        return None
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url
 
 
 def _image_match_confidence(
@@ -1095,14 +1112,15 @@ async def _wikipedia_rest_page_image(
     activity_title: str,
     location: str,
     destination: str,
+    http: httpx.AsyncClient | None = None,
 ) -> tuple[str, float, str] | None:
     """Fetch image from Wikipedia REST API — summary originalimage or media-list."""
     encoded = quote(page_title.replace(" ", "_"), safe="")
     candidates: list[tuple[str, float, str]] = []
 
-    async with httpx.AsyncClient(timeout=12) as http:
+    async def _fetch(client: httpx.AsyncClient) -> tuple[str, float, str] | None:
         try:
-            summary = await http.get(
+            summary = await client.get(
                 f"{_WIKIPEDIA_REST}/page/summary/{encoded}",
                 headers=_WIKI_HEADERS,
             )
@@ -1113,13 +1131,13 @@ async def _wikipedia_rest_page_image(
                     activity_title, location, title, destination
                 )
                 original = (data.get("originalimage") or {}).get("source")
-                thumb = (data.get("thumbnail") or {}).get("source")
+                thumb = _wiki_thumb_url(data.get("thumbnail"))
                 for url in (original, thumb):
                     if url:
                         candidates.append((url, conf, "wikipedia-rest"))
                         break
 
-            media = await http.get(
+            media = await client.get(
                 f"{_WIKIPEDIA_REST}/page/media-list/{encoded}",
                 headers=_WIKI_HEADERS,
             )
@@ -1142,8 +1160,12 @@ async def _wikipedia_rest_page_image(
                         break
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
             return None
+        return _pick_best_image(candidates)
 
-    return _pick_best_image(candidates)
+    if http is not None:
+        return await _fetch(http)
+    async with httpx.AsyncClient(timeout=8) as client:
+        return await _fetch(client)
 
 
 def _first_srcset_url(srcset: str | None) -> str | None:
@@ -1160,13 +1182,16 @@ async def _wikipedia_rest_search(
     activity_title: str,
     location: str,
     destination: str,
+    fast: bool = False,
 ) -> tuple[str, float, str] | None:
     """Search Wikipedia via REST API, then fetch the best matching page image."""
-    async with httpx.AsyncClient(timeout=12) as http:
+    limit = 3 if fast else 6
+    timeout = 6.0 if fast else 12.0
+    async with httpx.AsyncClient(timeout=timeout) as http:
         try:
             res = await http.get(
                 _WIKIPEDIA_REST_SEARCH,
-                params={"q": query, "limit": 6},
+                params={"q": query, "limit": limit},
                 headers=_WIKI_HEADERS,
             )
             if res.status_code != 200:
@@ -1182,14 +1207,21 @@ async def _wikipedia_rest_search(
                 )
                 if conf < _MIN_IMAGE_CONFIDENCE:
                     continue
+                if fast:
+                    url = _wiki_thumb_url(page.get("thumbnail"))
+                    if url:
+                        candidates.append((url, conf, "wikipedia-rest"))
+                        if conf >= 0.72:
+                            break
+                    continue
                 hit = await _wikipedia_rest_page_image(
                     title,
                     activity_title=activity_title,
                     location=location,
                     destination=destination,
+                    http=http,
                 )
                 if hit:
-                    # Blend search title match with page image confidence
                     blended = round(min(1.0, (conf + hit[1]) / 2 + 0.05), 2)
                     candidates.append((hit[0], blended, "wikipedia-rest"))
             return _pick_best_image(candidates)
@@ -1375,6 +1407,15 @@ async def fetch_activity_image(
             best = hit
 
     if fast:
+        if location and len(location.split()) <= 5:
+            await consider(
+                await _wikipedia_rest_page_image(
+                    location if len(location.split()) <= 4 else f"{location} {dest_city}",
+                    activity_title=activity_title,
+                    location=location,
+                    destination=destination,
+                )
+            )
         for q in queries[:2]:
             await consider(
                 await _wikipedia_rest_search(
@@ -1382,19 +1423,11 @@ async def fetch_activity_image(
                     activity_title=activity_title,
                     location=location,
                     destination=destination,
+                    fast=True,
                 )
             )
             if best and best[1] >= 0.72:
                 break
-        if (not best or best[1] < _MIN_IMAGE_CONFIDENCE) and location:
-            await consider(
-                await _wikipedia_direct_thumbnail(
-                    location if len(location.split()) <= 5 else f"{location} {dest_city}",
-                    activity_title=activity_title,
-                    location=location,
-                    destination=destination,
-                )
-            )
     else:
         for q in queries[:4]:
             await consider(
@@ -1473,13 +1506,31 @@ async def fetch_activity_image(
     return None
 
 
+async def lookup_activity_image(
+    destination: str,
+    title: str,
+    location_name: str = "",
+) -> dict[str, Any]:
+    """API-friendly wrapper — returns image metadata without mutating caller data."""
+    act: dict[str, Any] = {
+        "title": title.strip(),
+        "location_name": (location_name or title).strip(),
+    }
+    url = await fetch_activity_image(destination, act, fast=True)
+    return {
+        "image_url": url,
+        "image_confidence": act.get("image_confidence"),
+        "image_source": act.get("image_source"),
+    }
+
+
 async def enrich_activities_with_images(
     destination: str,
     days: list[dict[str, Any]],
     *,
-    budget_seconds: float = 14.0,
+    budget_seconds: float = 16.0,
     max_activities: int = 14,
-    per_activity_timeout: float = 3.5,
+    per_activity_timeout: float = 8.0,
 ) -> list[dict[str, Any]]:
     """Attach image_url when Wikipedia returns a confident title/location match."""
     from app.config import stubs_enabled
@@ -1498,7 +1549,7 @@ async def enrich_activities_with_images(
         return days
 
     t0 = api_start("Images", "wikipedia", count=len(acts), budget=f"{budget_seconds:.0f}s")
-    sem = asyncio.Semaphore(4)
+    sem = asyncio.Semaphore(3)
     attached = 0
 
     async def _attach(act: dict[str, Any]) -> None:

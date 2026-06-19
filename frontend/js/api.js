@@ -100,5 +100,17 @@ const WayfarerAPI = (() => {
     getFinal(id) {
       return request(`/plan/${encodeURIComponent(id)}/final`, { method: 'GET' });
     },
+
+    /** POST /images/lookup — one activity, safe to call in parallel from the UI */
+    lookupActivityImage({ destination, title, location_name }) {
+      return request('/images/lookup', {
+        method: 'POST',
+        body: JSON.stringify({
+          destination,
+          title: title || '',
+          location_name: location_name || title || '',
+        }),
+      });
+    },
   };
 })();

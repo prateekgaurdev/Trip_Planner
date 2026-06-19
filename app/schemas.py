@@ -97,3 +97,15 @@ class FinalPlanResponse(BaseModel):
     plan_id: str
     status: str
     final_plan: dict[str, Any]
+
+
+class ActivityImageLookupRequest(BaseModel):
+    destination: str = Field(..., min_length=2)
+    title: str = ""
+    location_name: str = ""
+
+
+class ActivityImageLookupResponse(BaseModel):
+    image_url: str | None = None
+    image_confidence: float | None = None
+    image_source: str | None = None
