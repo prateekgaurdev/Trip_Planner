@@ -915,10 +915,15 @@
     const desc = a.description || a.detail || a.notes || '';
     const cost = a.cost ?? a.price ?? a.amount;
     
-    // Images disabled for faster loading
+    // Wikipedia image only when backend verified a title/location match
+    const imageUrl = (!isDraft && a.image_url) ? a.image_url : null;
     const destName = typeof destination === 'string' ? destination.split(',')[0] : '';
     
     const titleHTML = `<a href="https://www.google.com/search?q=${encodeURIComponent(destName + ' ' + title)}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line);">${esc(title)}</a>`;
+
+    const imgHTML = imageUrl
+      ? `<div class="a-image"><img src="${esc(imageUrl)}" alt="${esc(title)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.remove();"/></div>`
+      : '';
 
     const cumulative = a.cumulative_distance_km;
     const travel = a.travel_from_prev || a.travel_to_next;
@@ -947,6 +952,7 @@
           ${travelHTML}
           ${cost != null ? `<span class="a-cost">${money(cost)}</span>` : ''}
         </div>
+        ${imgHTML}
       </div>
     </div>`;
   }

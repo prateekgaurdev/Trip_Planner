@@ -20,7 +20,16 @@ from langgraph.types import interrupt
 from app.pipeline_log import hitl_pause
 from app.services.llm import get_llm
 from app.state import TripState
-from app.tools import allocate_budget, build_day_schedule, build_route_map, get_weather, web_search, get_exchange_rate, generate_packing_list
+from app.tools import (
+    allocate_budget,
+    build_day_schedule,
+    build_route_map,
+    enrich_activities_with_images,
+    get_weather,
+    web_search,
+    get_exchange_rate,
+    generate_packing_list,
+)
 from app.services.serp import fetch_travel_options
 
 
@@ -279,10 +288,18 @@ async def finalize_expand(state: TripState) -> dict[str, Any]:
         for day in expanded_days
         for a in (day.get("activities") or [])
     )
-    if has_locations and expanded.get("days"):
-        refined = await build_route_map(dest, expanded_days)
-        if refined.get("available"):
-            route_map = refined
+
+    async def _refine_map() -> dict[str, Any]:
+        if has_locations and expanded.get("days"):
+            refined = await build_route_map(dest, expanded_days)
+            if refined.get("available"):
+                return refined
+        return route_map_draft
+
+    route_map, expanded_days = await asyncio.gather(
+        _refine_map(),
+        enrich_activities_with_images(dest, expanded_days),
+    )
 
     return {
         "status": "finalizing",

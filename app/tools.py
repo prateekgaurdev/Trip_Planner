@@ -993,7 +993,8 @@ def _image_match_confidence(
     if location_tokens and location_tokens <= result_tokens:
         score = max(score, 0.75)
 
-    if dest_tokens and not (dest_tokens & result_tokens):
+    strong_match = score >= 0.75
+    if dest_tokens and not strong_match and not (dest_tokens & result_tokens):
         if not any(d in res_norm for d in dest_tokens if len(d) > 3):
             score *= 0.55
 
@@ -1313,9 +1314,38 @@ def _image_search_queries(
     return queries
 
 
-async def fetch_activity_image(destination: str, activity: dict[str, Any]) -> str | None:
-    """Resolve an image URL from Wiki sources first, then Google image search."""
-    from app.config import get_settings, stubs_enabled
+_IMAGE_CACHE_TTL = 86400
+_image_url_cache: dict[str, tuple[float, str | None]] = {}
+
+
+def _image_cache_key(destination: str, location: str, title: str) -> str:
+    return "|".join(
+        p.strip().lower()
+        for p in (destination.split(",")[0], location, title)
+        if p.strip()
+    )
+
+
+def _image_cache_get(key: str) -> str | None | _GeocodeCacheMiss:
+    entry = _image_url_cache.get(key)
+    if not entry:
+        return _GeocodeCacheMiss()
+    expires, value = entry
+    if time.time() >= expires:
+        _image_url_cache.pop(key, None)
+        return _GeocodeCacheMiss()
+    return value
+
+
+def _image_cache_set(key: str, url: str | None) -> None:
+    _image_url_cache[key] = (time.time() + _IMAGE_CACHE_TTL, url)
+
+
+async def fetch_activity_image(
+    destination: str, activity: dict[str, Any], *, fast: bool = False
+) -> str | None:
+    """Resolve an image URL — Wikipedia only in *fast* mode (confidence-gated)."""
+    from app.config import stubs_enabled
 
     if stubs_enabled():
         return None
@@ -1327,6 +1357,14 @@ async def fetch_activity_image(destination: str, activity: dict[str, Any]) -> st
     if not activity_title and not location:
         return None
 
+    cache_key = _image_cache_key(destination, location, activity_title)
+    cached = _image_cache_get(cache_key)
+    if not isinstance(cached, _GeocodeCacheMiss):
+        if cached:
+            activity["image_url"] = cached
+            activity.setdefault("image_source", "cache")
+        return cached
+
     queries = _image_search_queries(activity_title, location, keyword, destination)
     dest_city = destination.split(",")[0].strip()
     best: tuple[str, float, str] | None = None
@@ -1336,22 +1374,31 @@ async def fetch_activity_image(destination: str, activity: dict[str, Any]) -> st
         if hit and (best is None or hit[1] > best[1]):
             best = hit
 
-    for q in queries[:4]:
-        await consider(
-            await _wikipedia_rest_search(
-                q,
-                activity_title=activity_title,
-                location=location,
-                destination=destination,
-            )
-        )
-        if best and best[1] >= 0.75:
-            break
-
-    if not best or best[1] < 0.7:
-        for q in queries:
+    if fast:
+        for q in queries[:2]:
             await consider(
-                await _wikimedia_thumbnail(
+                await _wikipedia_rest_search(
+                    q,
+                    activity_title=activity_title,
+                    location=location,
+                    destination=destination,
+                )
+            )
+            if best and best[1] >= 0.72:
+                break
+        if (not best or best[1] < _MIN_IMAGE_CONFIDENCE) and location:
+            await consider(
+                await _wikipedia_direct_thumbnail(
+                    location if len(location.split()) <= 5 else f"{location} {dest_city}",
+                    activity_title=activity_title,
+                    location=location,
+                    destination=destination,
+                )
+            )
+    else:
+        for q in queries[:4]:
+            await consider(
+                await _wikipedia_rest_search(
                     q,
                     activity_title=activity_title,
                     location=location,
@@ -1361,57 +1408,120 @@ async def fetch_activity_image(destination: str, activity: dict[str, Any]) -> st
             if best and best[1] >= 0.75:
                 break
 
-    if not best or best[1] < 0.65:
-        for q in queries[:3]:
+        if not best or best[1] < 0.7:
+            for q in queries:
+                await consider(
+                    await _wikimedia_thumbnail(
+                        q,
+                        activity_title=activity_title,
+                        location=location,
+                        destination=destination,
+                    )
+                )
+                if best and best[1] >= 0.75:
+                    break
+
+        if not best or best[1] < 0.65:
+            for q in queries[:3]:
+                await consider(
+                    await _wikipedia_search_thumbnail(
+                        q,
+                        activity_title=activity_title,
+                        location=location,
+                        destination=destination,
+                    )
+                )
+
+        if not best and location:
             await consider(
-                await _wikipedia_search_thumbnail(
-                    q,
+                await _wikipedia_direct_thumbnail(
+                    f"{location} {dest_city}",
                     activity_title=activity_title,
                     location=location,
                     destination=destination,
                 )
             )
 
-    if not best and location:
-        await consider(
-            await _wikipedia_direct_thumbnail(
-                f"{location} {dest_city}",
-                activity_title=activity_title,
-                location=location,
-                destination=destination,
-            )
-        )
-
-    if not best or best[1] < 0.65:
-        seen_g: set[str] = set()
-        google_queries = queries[:2] + [
-            f"{location or activity_title} {dest_city} landmark",
-            f"{location or activity_title} {dest_city} tourist attraction",
-        ]
-        for q in google_queries:
-            if q.lower() in seen_g:
-                continue
-            seen_g.add(q.lower())
-            await consider(
-                await _google_image_search(
-                    q,
-                    activity_title=activity_title,
-                    location=location,
-                    destination=destination,
+        if not best or best[1] < 0.65:
+            seen_g: set[str] = set()
+            google_queries = queries[:2] + [
+                f"{location or activity_title} {dest_city} landmark",
+                f"{location or activity_title} {dest_city} tourist attraction",
+            ]
+            for q in google_queries:
+                if q.lower() in seen_g:
+                    continue
+                seen_g.add(q.lower())
+                await consider(
+                    await _google_image_search(
+                        q,
+                        activity_title=activity_title,
+                        location=location,
+                        destination=destination,
+                    )
                 )
-            )
-            if best and best[1] >= 0.7:
-                break
+                if best and best[1] >= 0.7:
+                    break
 
-    if best:
+    if best and best[1] >= _MIN_IMAGE_CONFIDENCE:
         activity["image_confidence"] = best[1]
         activity["image_source"] = best[2]
+        _image_cache_set(cache_key, best[0])
         return best[0]
+
+    _image_cache_set(cache_key, None)
     return None
 
 
 async def enrich_activities_with_images(
-    destination: str, days: list[dict[str, Any]]
+    destination: str,
+    days: list[dict[str, Any]],
+    *,
+    budget_seconds: float = 14.0,
+    max_activities: int = 14,
+    per_activity_timeout: float = 3.5,
 ) -> list[dict[str, Any]]:
-    """Images disabled for faster finalize — returns days unchanged."""
+    """Attach image_url when Wikipedia returns a confident title/location match."""
+    from app.config import stubs_enabled
+    from app.pipeline_log import api_end, api_start
+
+    if stubs_enabled() or not days:
+        return days
+
+    acts: list[dict[str, Any]] = []
+    for day in days:
+        for act in day.get("activities") or []:
+            if isinstance(act, dict) and not act.get("image_url"):
+                acts.append(act)
+    acts = acts[:max_activities]
+    if not acts:
+        return days
+
+    t0 = api_start("Images", "wikipedia", count=len(acts), budget=f"{budget_seconds:.0f}s")
+    sem = asyncio.Semaphore(4)
+    attached = 0
+
+    async def _attach(act: dict[str, Any]) -> None:
+        nonlocal attached
+        async with sem:
+            try:
+                url = await asyncio.wait_for(
+                    fetch_activity_image(destination, act, fast=True),
+                    timeout=per_activity_timeout,
+                )
+                if url:
+                    act["image_url"] = url
+                    attached += 1
+            except asyncio.TimeoutError:
+                pass
+
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*(_attach(act) for act in acts)),
+            timeout=budget_seconds,
+        )
+    except asyncio.TimeoutError:
+        pass
+
+    api_end("Images", "wikipedia", t0, attached=attached, tried=len(acts))
     return days

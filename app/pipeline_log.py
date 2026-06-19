@@ -194,4 +194,6 @@ def infer_llm_label(system: str) -> str:
         return "planner_narrative"
     if "aviation" in s:
         return "airports"
+    if "wikipedia" in s or "images" in s:
+        return "activity_images"
     return "llm_json"
