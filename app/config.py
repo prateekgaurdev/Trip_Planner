@@ -46,8 +46,15 @@ class Settings(BaseSettings):
     use_stubs: bool = False
 
     # When true, POST /plan and /review return immediately and the graph runs
-    # in the background. Set false in tests for deterministic inline runs.
+    # in the background. Disabled automatically on Vercel (serverless).
     graph_background: bool = True
+
+
+def graph_runs_in_background() -> bool:
+    """Background asyncio tasks die when a Vercel function returns."""
+    if os.environ.get("VERCEL"):
+        return False
+    return get_settings().graph_background
 
 
 @lru_cache

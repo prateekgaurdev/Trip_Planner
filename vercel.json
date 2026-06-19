@@ -2,7 +2,10 @@
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
     },
     {
       "src": "frontend/**",
@@ -12,6 +15,10 @@
   "routes": [
     {
       "src": "/plan(.*)",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/images/(.*)",
       "dest": "/api/index.py"
     },
     {
@@ -30,5 +37,10 @@
       "src": "/(.*)",
       "dest": "/frontend/$1"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60
+    }
+  }
 }

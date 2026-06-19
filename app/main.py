@@ -12,14 +12,16 @@ from __future__ import annotations
 import logging
 import uuid
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
 
-from app.config import get_settings, stubs_enabled
+from app.config import get_settings, graph_runs_in_background, stubs_enabled
 from app.graph import build_graph
 from app.graph_runner import invoke_graph, is_plan_running, start_graph_run
 from app.pipeline_log import (
@@ -43,6 +45,8 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
+_graph_init_lock = asyncio.Lock()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,6 +69,15 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        raise exc
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    detail = str(exc) or exc.__class__.__name__
+    return JSONResponse(status_code=500, content={"detail": detail[:300]})
 
 
 @app.middleware("http")
@@ -117,18 +130,27 @@ def _plan_response(plan_id: str, state: dict[str, Any] | None) -> PlanStateRespo
 
 async def get_graph():
     """Lazily initialize graph if lifespan isn't supported (e.g. on Vercel)."""
-    if not hasattr(app.state, "graph"):
-        # For serverless environments like Vercel where lifespan may not trigger
-        from app.graph import _build_uncompiled
+    if getattr(app.state, "graph", None) is not None:
+        return app.state.graph
+
+    async with _graph_init_lock:
+        if getattr(app.state, "graph", None) is not None:
+            return app.state.graph
+
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-        from app.config import get_settings, stubs_enabled
-        
+
+        from app.graph import _build_uncompiled
+
         settings = get_settings()
-        saver = AsyncSqliteSaver.from_conn_string(settings.checkpoint_db)
-        # Keep connection open for the lifetime of the Lambda container
-        await saver.__aenter__()
-        app.state.graph = _build_uncompiled().compile(checkpointer=saver)
-    return app.state.graph
+        if not getattr(app.state, "checkpointer", None):
+            cm = AsyncSqliteSaver.from_conn_string(settings.checkpoint_db)
+            app.state.checkpointer = await cm.__aenter__()
+            app.state._checkpointer_cm = cm
+
+        app.state.graph = _build_uncompiled().compile(
+            checkpointer=app.state.checkpointer
+        )
+        return app.state.graph
 
 
 @app.get("/health", tags=["meta"])
@@ -181,7 +203,7 @@ async def create_plan(req: PlanRequest) -> PlanCreatedResponse:
             "include_hotels": req.include_hotels,
         },
     }
-    if get_settings().graph_background:
+    if graph_runs_in_background():
         flow("CREATE background job queued")
         start_graph_run(plan_id, initial)
         return PlanCreatedResponse(plan_id=plan_id, status="researching")
@@ -245,7 +267,7 @@ async def review_plan(plan_id: str, req: ReviewRequest) -> PlanStateResponse:
         "reject": "Restarting — fresh web search and weather for your trip…",
     }[req.action]
 
-    if get_settings().graph_background:
+    if graph_runs_in_background():
         flow("REVIEW background job queued", action=req.action)
         start_graph_run(plan_id, Command(resume=resume))
         return PlanStateResponse(

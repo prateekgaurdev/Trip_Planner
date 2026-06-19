@@ -162,7 +162,7 @@ def startup_banner(settings: Any) -> None:
         "Wayfarer %s | model=%s | bg=%s | %s",
         mode,
         settings.gemini_model,
-        settings.graph_background,
+        settings.graph_background if not os.environ.get("VERCEL") else False,
         keys,
     )
     LOG.warning(
