@@ -1,21 +1,34 @@
 {
-  "outputDirectory": "frontend",
-  "rewrites": [
+  "builds": [
     {
-      "source": "/plan(.*)",
-      "destination": "/api/index"
+      "src": "api/index.py",
+      "use": "@vercel/python"
     },
     {
-      "source": "/health",
-      "destination": "/api/index"
+      "src": "frontend/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/plan(.*)",
+      "dest": "/api/index.py"
     },
     {
-      "source": "/docs(.*)",
-      "destination": "/api/index"
+      "src": "/health",
+      "dest": "/api/index.py"
     },
     {
-      "source": "/openapi.json",
-      "destination": "/api/index"
+      "src": "/docs(.*)",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/openapi.json",
+      "dest": "/api/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/frontend/$1"
     }
   ]
 }

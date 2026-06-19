@@ -9,6 +9,7 @@ Lifecycle of a plan:
 """
 from __future__ import annotations
 
+import logging
 import uuid
 import os
 from contextlib import asynccontextmanager
@@ -18,7 +19,17 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from langgraph.types import Command
 
+from app.config import get_settings, stubs_enabled
 from app.graph import build_graph
+from app.graph_runner import invoke_graph, is_plan_running, start_graph_run
+from app.pipeline_log import (
+    LOG as pipeline_log,
+    flow,
+    hitl_resume,
+    http as log_http,
+    setup_pipeline_logging,
+    startup_banner,
+)
 from app.schemas import (
     FinalPlanResponse,
     PlanCreatedResponse,
@@ -28,9 +39,16 @@ from app.schemas import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Open the checkpointer-backed graph once for the app's lifetime."""
+    setup_pipeline_logging()
+    get_settings.cache_clear()
+    settings = get_settings()
+    startup_banner(settings)
     async with build_graph() as graph:
         app.state.graph = graph
         yield
@@ -47,6 +65,27 @@ app = FastAPI(
 )
 
 
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Log API traffic — polls at DEBUG to avoid terminal spam."""
+    path = request.url.path
+    if path.startswith("/css") or path.startswith("/js") or path.endswith((".css", ".js", ".svg", ".png", ".ico")):
+        return await call_next(request)
+
+    import time
+
+    t0 = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - t0) * 1000
+
+    is_poll = request.method == "GET" and path.startswith("/plan/") and path.count("/") == 2
+    if is_poll:
+        pipeline_log.debug("HTTP GET %s → %s (%.0fms)", path, response.status_code, ms)
+    elif path.startswith(("/plan", "/health")):
+        log_http(request.method, path, status=response.status_code, ms=ms)
+    return response
+
+
 def _thread(plan_id: str) -> dict[str, Any]:
     """LangGraph config — thread_id == plan_id is the whole persistence trick."""
     return {"configurable": {"thread_id": plan_id}}
@@ -59,13 +98,28 @@ async def _current_state(plan_id: str) -> dict[str, Any] | None:
         return None
     return snapshot.values
 
+
+def _plan_response(plan_id: str, state: dict[str, Any] | None) -> PlanStateResponse:
+    state = state or {}
+    return PlanStateResponse(
+        plan_id=plan_id,
+        status=state.get("status", "unknown"),
+        progress_message=state.get("progress_message") or "",
+        preferences=state.get("preferences"),
+        research=state.get("research"),
+        draft_itinerary=state.get("draft_itinerary"),
+        travel_options=state.get("travel_options"),
+        revision_count=state.get("revision_count", 0),
+        revision_notes=state.get("revision_notes", []),
+    )
+
 async def get_graph():
     """Lazily initialize graph if lifespan isn't supported (e.g. on Vercel)."""
     if not hasattr(app.state, "graph"):
         # For serverless environments like Vercel where lifespan may not trigger
         from app.graph import _build_uncompiled
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-        from app.config import get_settings
+        from app.config import get_settings, stubs_enabled
         
         settings = get_settings()
         saver = AsyncSqliteSaver.from_conn_string(settings.checkpoint_db)
@@ -76,14 +130,30 @@ async def get_graph():
 
 
 @app.get("/health", tags=["meta"])
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health() -> dict[str, Any]:
+    """Quick sanity check — confirms whether the server is using real APIs or stubs."""
+    settings = get_settings()
+    return {
+        "status": "ok",
+        "mode": "live" if not stubs_enabled() else "stubs",
+        "gemini_model": settings.gemini_model,
+        "google_api_key_set": bool(settings.google_api_key),
+        "tavily_api_key_set": bool(settings.tavily_api_key),
+        "openrouteservice_api_key_set": bool(settings.openrouteservice_api_key),
+        "serpapi_key_set": bool(settings.serpapi_key),
+    }
 
 
 @app.post("/plan", response_model=PlanCreatedResponse, status_code=201, tags=["plan"])
 async def create_plan(req: PlanRequest) -> PlanCreatedResponse:
     """Kick off a new plan. Runs until the graph hits the HITL interrupt."""
     plan_id = str(uuid.uuid4())
+    flow(
+        "CREATE plan",
+        dest=req.destination,
+        budget=f"{req.budget} {req.currency}",
+        from_city=req.origin or "-",
+    )
     initial = {
         "plan_id": plan_id,
         "preferences": {
@@ -94,14 +164,22 @@ async def create_plan(req: PlanRequest) -> PlanCreatedResponse:
             "currency": req.currency,
             "travelers": req.travelers,
             "interests": req.interests,
+            "origin": req.origin.strip(),
+            "flight_destination": req.flight_destination.strip(),
+            "include_flights": req.include_flights,
+            "include_hotels": req.include_hotels,
         },
     }
-    # Runs to the interrupt() and returns; the checkpoint is now persisted.
-    graph = await get_graph()
-    await graph.ainvoke(initial, config=_thread(plan_id))
+    if get_settings().graph_background:
+        flow("CREATE background job queued")
+        start_graph_run(plan_id, initial)
+        return PlanCreatedResponse(plan_id=plan_id, status="researching")
+    await invoke_graph(plan_id, initial)
     state = await _current_state(plan_id)
+    status = (state or {}).get("status", "researching")
+    flow("CREATE finished", status=status)
     return PlanCreatedResponse(
-        plan_id=plan_id, status=(state or {}).get("status", "researching")
+        plan_id=plan_id, status=status
     )
 
 
@@ -111,15 +189,7 @@ async def get_plan(plan_id: str) -> PlanStateResponse:
     state = await _current_state(plan_id)
     if state is None:
         raise HTTPException(404, f"No plan with id {plan_id}")
-    return PlanStateResponse(
-        plan_id=plan_id,
-        status=state.get("status", "unknown"),
-        preferences=state.get("preferences"),
-        research=state.get("research"),
-        draft_itinerary=state.get("draft_itinerary"),
-        revision_count=state.get("revision_count", 0),
-        revision_notes=state.get("revision_notes", []),
-    )
+    return _plan_response(plan_id, state)
 
 
 @app.post("/plan/{plan_id}/review", response_model=PlanStateResponse, tags=["plan"])
@@ -139,22 +209,49 @@ async def review_plan(plan_id: str, req: ReviewRequest) -> PlanStateResponse:
             f"Plan is '{state.get('status')}', not awaiting_review; cannot review now.",
         )
 
-    graph = await get_graph()
-    await graph.ainvoke(
-        Command(resume={"action": req.action, "feedback": req.feedback}),
-        config=_thread(plan_id),
-    )
+    if is_plan_running(plan_id):
+        raise HTTPException(409, "Plan is already being processed; please wait.")
 
-    new_state = await _current_state(plan_id)
-    return PlanStateResponse(
-        plan_id=plan_id,
-        status=(new_state or {}).get("status", "unknown"),
-        preferences=(new_state or {}).get("preferences"),
-        research=(new_state or {}).get("research"),
-        draft_itinerary=(new_state or {}).get("draft_itinerary"),
-        revision_count=(new_state or {}).get("revision_count", 0),
-        revision_notes=(new_state or {}).get("revision_notes", []),
+    resume = {
+        "action": req.action,
+        "feedback": req.feedback,
+        "travel_selections": req.travel_selections,
+    }
+    sel = req.travel_selections or {}
+    hitl_resume(
+        req.action,
+        feedback=req.feedback or "",
+        has_travel=bool(sel.get("flight") or sel.get("hotel")),
     )
+    kickoff_status = {
+        "approve": "finalizing",
+        "modify": "planning",
+        "reject": "researching",
+    }[req.action]
+    kickoff_message = {
+        "approve": "Approved — expanding your itinerary and mapping your route…",
+        "modify": "Sending your notes to the planner agent…",
+        "reject": "Restarting — fresh web search and weather for your trip…",
+    }[req.action]
+
+    if get_settings().graph_background:
+        flow("REVIEW background job queued", action=req.action)
+        start_graph_run(plan_id, Command(resume=resume))
+        return PlanStateResponse(
+            plan_id=plan_id,
+            status=kickoff_status,
+            progress_message=kickoff_message,
+            preferences=state.get("preferences"),
+            research=state.get("research"),
+            draft_itinerary=state.get("draft_itinerary"),
+            revision_count=state.get("revision_count", 0),
+            revision_notes=state.get("revision_notes", []),
+        )
+
+    await invoke_graph(plan_id, Command(resume=resume))
+    new_state = await _current_state(plan_id)
+    flow("REVIEW finished", status=(new_state or {}).get("status"))
+    return _plan_response(plan_id, new_state)
 
 
 @app.get("/plan/{plan_id}/final", response_model=FinalPlanResponse, tags=["plan"])

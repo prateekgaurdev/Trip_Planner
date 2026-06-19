@@ -23,6 +23,29 @@ class PlanRequest(BaseModel):
     interests: list[str] = Field(
         default_factory=list, examples=[["food", "temples", "hiking"]]
     )
+    # Optional flight departure city; hotels are always auto-picked at finalize
+    origin: str = Field(
+        "",
+        description="Departure city for automatic flight search (optional).",
+        examples=["Delhi, India"],
+    )
+    flight_destination: str = Field(
+        "",
+        description="Override flight arrival city; auto-detected from trip destination if empty.",
+        examples=["Dehradun, India"],
+    )
+    include_flights: bool = Field(
+        False,
+        description="Deprecated — flights run automatically when origin is set.",
+    )
+    include_hotels: bool = Field(
+        False,
+        description="Deprecated — hotels are always fetched at finalize.",
+    )
+
+    @model_validator(mode="after")
+    def _check_travel_options(self) -> "PlanRequest":
+        return self
 
     @model_validator(mode="after")
     def _check_dates(self) -> "PlanRequest":
@@ -39,6 +62,10 @@ class ReviewRequest(BaseModel):
         "",
         description="Required for reject/modify; ignored for approve.",
         examples=["Swap the day-3 museum for an outdoor hike."],
+    )
+    travel_selections: dict[str, Any] | None = Field(
+        None,
+        description="Optional flight/hotel picks on approve: {flight: offer|null, hotel: offer|null}.",
     )
 
     @model_validator(mode="after")
@@ -57,9 +84,11 @@ class PlanCreatedResponse(BaseModel):
 class PlanStateResponse(BaseModel):
     plan_id: str
     status: str
+    progress_message: str = ""
     preferences: dict[str, Any] | None = None
     research: dict[str, Any] | None = None
     draft_itinerary: dict[str, Any] | None = None
+    travel_options: dict[str, Any] | None = None
     revision_count: int = 0
     revision_notes: list[str] = Field(default_factory=list)
 

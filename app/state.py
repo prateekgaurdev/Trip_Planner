@@ -12,6 +12,7 @@ PlanStatus = Literal[
     "researching",      # research agent is gathering context
     "planning",         # planner agent is drafting the itinerary
     "awaiting_review",   # graph paused at the HITL gate, waiting for /review
+    "finalizing",       # approved — expanding itinerary, media, travel picks
     "completed",         # plan approved and finalised
 ]
 
@@ -56,6 +57,21 @@ class TripState(TypedDict, total=False):
     # when they re-run after a reject/modify.
     revision_notes: list[str]
     revision_count: int
+
+    # Human-readable status for the UI while agents work.
+    progress_message: str
+
+    # Optional picks from the HITL review (included in final plan when set).
+    travel_selections: dict[str, Any]
+
+    # Live flight/hotel search results surfaced at review time.
+    travel_options: dict[str, Any]
+
+    # Internal research/finalize pipeline buffers.
+    _research_raw: dict[str, Any]
+    _expanded_days: list[dict[str, Any]]
+    _travel_options: dict[str, Any]
+    _route_map: dict[str, Any]
 
     # The approved, formatted output.
     final_plan: dict[str, Any]

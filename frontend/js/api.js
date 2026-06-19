@@ -85,10 +85,11 @@ const WayfarerAPI = (() => {
       return request(`/plan/${encodeURIComponent(id)}`, { method: 'GET' });
     },
 
-    /** POST /plan/{id}/review  body: { action, feedback? } */
-    review(id, action, feedback) {
+    /** POST /plan/{id}/review  body: { action, feedback?, travel_selections? } */
+    review(id, action, feedback, travelSelections) {
       const body = { action };
       if (feedback != null && feedback !== '') body.feedback = feedback;
+      if (travelSelections) body.travel_selections = travelSelections;
       return request(`/plan/${encodeURIComponent(id)}/review`, {
         method: 'POST',
         body: JSON.stringify(body),

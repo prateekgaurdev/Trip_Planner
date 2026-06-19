@@ -8,6 +8,7 @@ Run:  USE_STUBS=true pytest -q
 """
 from __future__ import annotations
 
+import asyncio
 import os
 
 import pytest
@@ -15,6 +16,7 @@ import pytest
 # Force stub mode BEFORE app/config is imported anywhere.
 os.environ["USE_STUBS"] = "true"
 os.environ["CHECKPOINT_DB"] = ":memory:"
+os.environ["GRAPH_BACKGROUND"] = "false"
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
@@ -23,7 +25,6 @@ from app.main import app  # noqa: E402
 
 @pytest.fixture
 async def client():
-    # Trigger FastAPI lifespan so the graph/checkpointer is built.
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as c:
@@ -31,15 +32,35 @@ async def client():
             yield c
 
 
+async def _wait_for_status(
+    client: AsyncClient,
+    plan_id: str,
+    status: str,
+    *,
+    min_revision: int | None = None,
+    timeout: float = 30.0,
+) -> dict:
+    deadline = asyncio.get_event_loop().time() + timeout
+    while asyncio.get_event_loop().time() < deadline:
+        resp = await client.get(f"/plan/{plan_id}")
+        if resp.status_code == 200:
+            body = resp.json()
+            if body.get("status") == status:
+                if min_revision is None or body.get("revision_count", 0) >= min_revision:
+                    return body
+        await asyncio.sleep(0.05)
+    pytest.fail(f"Timed out waiting for status={status!r} on plan {plan_id}")
+
+
 async def test_full_hitl_roundtrip(client: AsyncClient):
-    # 1. Create a plan.
     resp = await client.post(
         "/plan",
         json={
             "destination": "Lisbon, Portugal",
             "start_date": "2026-09-10",
             "end_date": "2026-09-13",
-            "budget_usd": 2000,
+            "budget": 2000,
+            "currency": "USD",
             "travelers": 2,
             "interests": ["food", "history"],
         },
@@ -47,42 +68,37 @@ async def test_full_hitl_roundtrip(client: AsyncClient):
     assert resp.status_code == 201
     plan_id = resp.json()["plan_id"]
 
-    # 2. It should be paused awaiting review with a draft present.
-    state = (await client.get(f"/plan/{plan_id}")).json()
-    assert state["status"] == "awaiting_review"
+    state = await _wait_for_status(client, plan_id, "awaiting_review")
     assert state["draft_itinerary"]["days"]
 
-    # 3. Reject → loops back through research, ends awaiting_review again.
     r = await client.post(
         f"/plan/{plan_id}/review",
         json={"action": "reject", "feedback": "More museums please."},
     )
     assert r.status_code == 200
-    assert r.json()["status"] == "awaiting_review"
-    assert r.json()["revision_count"] == 1
+    state = await _wait_for_status(client, plan_id, "awaiting_review", min_revision=1)
 
-    # 4. Modify → loops through planner only, still awaiting_review.
     r = await client.post(
         f"/plan/{plan_id}/review",
         json={"action": "modify", "feedback": "Make day 2 a relaxed day."},
     )
-    assert r.json()["status"] == "awaiting_review"
-    assert r.json()["revision_count"] == 2
+    assert r.status_code == 200
+    state = await _wait_for_status(client, plan_id, "awaiting_review", min_revision=2)
 
-    # 5. Approve → finalize.
     r = await client.post(f"/plan/{plan_id}/review", json={"action": "approve"})
-    assert r.json()["status"] == "completed"
+    assert r.status_code == 200
+    await _wait_for_status(client, plan_id, "completed")
 
-    # 6. Final plan is retrievable and marked approved.
     final = await client.get(f"/plan/{plan_id}/final")
     assert final.status_code == 200
     body = final.json()["final_plan"]
     assert body["approved"] is True
     assert body["revisions"] == 2
     assert body["destination"] == "Lisbon, Portugal"
+    assert body.get("route_map", {}).get("available") is True
+    assert body["route_map"]["totals"]["distance_km"] > 0
 
 
 async def test_review_before_ready_is_409(client: AsyncClient):
-    # Reviewing a non-existent plan → 404.
     r = await client.post("/plan/does-not-exist/review", json={"action": "approve"})
     assert r.status_code == 404

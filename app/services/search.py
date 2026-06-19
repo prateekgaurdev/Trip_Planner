@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.config import get_settings
+from app.config import get_settings, stubs_enabled
 
 
 class TavilyClient:
@@ -19,6 +19,9 @@ class TavilyClient:
         self._client = _Tavily(api_key=settings.tavily_api_key)
 
     async def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]:
+        from app.pipeline_log import api_end, api_start
+
+        t0 = api_start("Tavily", "search", query=query[:80], max_results=max_results)
         # tavily-python is sync; run it without blocking the event loop.
         import anyio
 
@@ -27,11 +30,17 @@ class TavilyClient:
                 query=query, max_results=max_results, search_depth="basic"
             )
 
-        raw = await anyio.to_thread.run_sync(_call)
-        return [
-            {"title": r.get("title"), "url": r.get("url"), "content": r.get("content")}
-            for r in raw.get("results", [])
-        ]
+        try:
+            raw = await anyio.to_thread.run_sync(_call)
+            results = [
+                {"title": r.get("title"), "url": r.get("url"), "content": r.get("content")}
+                for r in raw.get("results", [])
+            ]
+            api_end("Tavily", "search", t0, results=len(results))
+            return results
+        except Exception as exc:
+            api_end("Tavily", "search", t0, ok=False, error=str(exc)[:120])
+            raise
 
 
 class StubSearch:
@@ -52,6 +61,6 @@ class StubSearch:
 
 
 def get_search() -> TavilyClient | StubSearch:
-    if get_settings().use_stubs:
+    if stubs_enabled():
         return StubSearch()
     return TavilyClient()

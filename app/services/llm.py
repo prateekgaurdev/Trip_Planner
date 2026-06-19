@@ -9,11 +9,40 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.config import get_settings
+from app.config import get_settings, stubs_enabled
 
 
 class LLMError(RuntimeError):
     """Raised when the LLM call fails or returns unparseable output."""
+
+
+def _content_to_text(content: Any) -> str:
+    """Normalize LangChain/Gemini message content to a plain string.
+
+    Newer Gemini responses may return content as a list of blocks instead of
+    a single string — e.g. [{"type": "text", "text": "..."}].
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        if "text" in content:
+            return str(content["text"])
+        return json.dumps(content)
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if text:
+                    parts.append(str(text))
+            elif item is not None:
+                parts.append(str(item))
+        return "\n".join(parts)
+    return str(content)
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -51,6 +80,12 @@ class GeminiClient:
         )
 
     async def complete_json(self, system: str, user: str) -> dict[str, Any]:
+        from app.config import get_settings
+        from app.pipeline_log import api_end, api_start, infer_llm_label
+
+        label = infer_llm_label(system)
+        settings = get_settings()
+        t0 = api_start("Gemini", label, model=settings.gemini_model, prompt_chars=len(system) + len(user))
         prompt = (
             f"{system}\n\n{user}\n\n"
             "Respond with ONLY a valid JSON object. No markdown, no prose."
@@ -58,8 +93,20 @@ class GeminiClient:
         try:
             resp = await self._llm.ainvoke(prompt)
         except Exception as exc:  # pragma: no cover - network dependent
+            api_end("Gemini", label, t0, ok=False, error=str(exc)[:120])
             raise LLMError(f"Gemini call failed: {exc}") from exc
-        return _extract_json(resp.content if hasattr(resp, "content") else str(resp))
+
+        raw = resp.content if hasattr(resp, "content") else resp
+        if isinstance(raw, dict):
+            api_end("Gemini", label, t0, keys=list(raw.keys()))
+            return raw
+        text = _content_to_text(raw)
+        if not text.strip():
+            api_end("Gemini", label, t0, ok=False, error="empty response")
+            raise LLMError("Gemini returned an empty response.")
+        parsed = _extract_json(text)
+        api_end("Gemini", label, t0, keys=list(parsed.keys()))
+        return parsed
 
 
 class StubLLM:
@@ -70,7 +117,8 @@ class StubLLM:
     """
 
     async def complete_json(self, system: str, user: str) -> dict[str, Any]:
-        if "research" in system.lower():
+        sys_lower = system.lower()
+        if "research" in sys_lower:
             return {
                 "highlights": [
                     "Historic old town walking area",
@@ -78,6 +126,74 @@ class StubLLM:
                     "Scenic riverside park",
                 ],
                 "tips": ["Buy a transit day-pass", "Book popular sites in advance"],
+            }
+        if "finalizing" in sys_lower or "finaliz" in sys_lower:
+            return {
+                "days": [
+                    {
+                        "day_number": 1,
+                        "date": "2026-09-10",
+                        "title": "Old town & markets",
+                        "description": "A cultural introduction to the city.",
+                        "activities": [
+                            {
+                                "time": "09:30",
+                                "title": "Historic old town walking area",
+                                "description": "Explore cobbled lanes and local architecture.",
+                                "image_keyword": "old town",
+                                "location_name": "Historic old town",
+                            },
+                            {
+                                "time": "13:00",
+                                "title": "Renowned local food market",
+                                "description": "Sample regional specialties and street food.",
+                                "image_keyword": "food market",
+                                "location_name": "Local food market",
+                            },
+                        ],
+                    },
+                    {
+                        "day_number": 2,
+                        "date": "2026-09-11",
+                        "title": "Riverside & museums",
+                        "description": "A relaxed day mixing outdoors and culture.",
+                        "activities": [
+                            {
+                                "time": "10:00",
+                                "title": "Scenic riverside park",
+                                "description": "Stroll along the waterfront and people-watch.",
+                                "image_keyword": "riverside",
+                                "location_name": "Riverside park",
+                            },
+                            {
+                                "time": "15:00",
+                                "title": "City museum",
+                                "description": "Dive into local history and art.",
+                                "image_keyword": "museum",
+                                "location_name": "City museum",
+                            },
+                        ],
+                    },
+                ]
+            }
+        if "skeletal schedule" in sys_lower or "day-by-day skeletal" in sys_lower:
+            return {
+                "days": [
+                    {
+                        "day_number": 1,
+                        "date": "2026-09-10",
+                        "focus": "flexible",
+                        "activities": ["Historic old town walking area", "Local food market"],
+                        "weather_note": "",
+                    },
+                    {
+                        "day_number": 2,
+                        "date": "2026-09-11",
+                        "focus": "indoor",
+                        "activities": ["Scenic riverside park", "City museum"],
+                        "weather_note": "",
+                    },
+                ]
             }
         # Planner-style request.
         return {
@@ -87,7 +203,7 @@ class StubLLM:
 
 
 def get_llm() -> GeminiClient | StubLLM:
-    """Factory honouring the USE_STUBS flag."""
-    if get_settings().use_stubs:
+    """Return Gemini in production; StubLLM only under pytest with USE_STUBS=true."""
+    if stubs_enabled():
         return StubLLM()
     return GeminiClient()

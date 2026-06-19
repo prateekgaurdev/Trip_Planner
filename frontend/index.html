@@ -6,10 +6,13 @@
   <title>Wayfarer · AI Travel Planner</title>
   <meta name="description" content="A multi-agent AI travel planner with a human-in-the-loop approval gate. Research, plan, review, finalize." />
 
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -43,19 +46,33 @@
           <li><i class="fa-solid fa-circle-check"></i> Live research &amp; weather-aware days</li>
           <li><i class="fa-solid fa-circle-check"></i> Transparent budget allocation</li>
           <li><i class="fa-solid fa-circle-check"></i> Review gate before anything is final</li>
+          <li><i class="fa-solid fa-circle-check"></i> Interactive route maps with distance &amp; time estimates</li>
         </ul>
       </div>
 
       <div class="form-card" id="form-card">
         <h2 class="card-title"><i class="fa-solid fa-paper-plane"></i> Start a plan</h2>
         <form id="plan-form" novalidate>
-          <div class="field">
-            <label for="destination">Destination</label>
-            <div class="input-wrap">
-              <i class="fa-solid fa-location-dot"></i>
-              <input type="text" id="destination" name="destination" placeholder="Kyoto, Japan" required minlength="2" />
+          <div class="field-row field-row-dest">
+            <div class="field">
+              <label for="origin">Flying from <span class="label-optional">optional</span></label>
+              <div class="input-wrap">
+                <i class="fa-solid fa-plane-departure"></i>
+                <input type="text" id="origin" name="origin" placeholder="Delhi, India" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="destination">Destination</label>
+              <div class="input-wrap">
+                <i class="fa-solid fa-location-dot"></i>
+                <input type="text" id="destination" name="destination" placeholder="Rishikesh, India" required minlength="2" />
+              </div>
             </div>
           </div>
+          <p class="field-hint">Hotels are auto-picked at your destination. Add a departure city to get a recommended flight.</p>
+          <input type="hidden" id="flight_destination" name="flight_destination" value="" />
+          <input type="hidden" id="include_flights" name="include_flights" value="" />
+          <input type="hidden" id="include_hotels" name="include_hotels" value="on" />
 
           <div class="field-row">
             <div class="field">
@@ -90,6 +107,7 @@
                   <option value="USD" selected>USD ($)</option>
                   <option value="EUR">EUR (€)</option>
                   <option value="GBP">GBP (£)</option>
+                  <option value="INR">INR (₹)</option>
                   <option value="JPY">JPY (¥)</option>
                   <option value="AUD">AUD ($)</option>
                   <option value="CAD">CAD ($)</option>
@@ -151,6 +169,10 @@
           <span class="step-icon"><i class="fa-solid fa-user-check"></i></span>
           <span class="step-label">Your review</span>
         </li>
+        <li class="step" data-step="finalizing">
+          <span class="step-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+          <span class="step-label">Finalizing</span>
+        </li>
         <li class="step" data-step="completed">
           <span class="step-icon"><i class="fa-solid fa-flag-checkered"></i></span>
           <span class="step-label">Finalized</span>
@@ -160,7 +182,10 @@
       <!-- Working / loading banner -->
       <div class="working-banner" id="working-banner">
         <span class="spinner" aria-hidden="true"></span>
-        <span id="working-text">Agents are working…</span>
+        <div class="working-copy">
+          <span id="working-text">Agents are working…</span>
+          <span class="thinking-line" id="thinking-line" aria-live="polite"></span>
+        </div>
       </div>
 
       <!-- Draft + review gate -->
@@ -169,15 +194,17 @@
         <div class="review-gate" id="review-gate" hidden>
           <div class="gate-head">
             <span class="gate-badge"><i class="fa-solid fa-circle-pause"></i> Awaiting your review</span>
-            <p>The draft below is ready. Approve it, request changes, or reject and restart.</p>
+            <p>The draft below is ready. Optionally pick a flight or hotel, then approve — or skip to keep sightseeing only.</p>
           </div>
+          <div id="travel-review" class="travel-review" hidden></div>
           <div class="gate-actions">
             <button class="btn btn-approve" data-action="approve"><i class="fa-solid fa-check"></i> Approve</button>
             <button class="btn btn-modify" data-action="modify"><i class="fa-solid fa-pen"></i> Request changes</button>
             <button class="btn btn-reject" data-action="reject"><i class="fa-solid fa-xmark"></i> Reject &amp; restart</button>
           </div>
           <div class="feedback-box" id="feedback-box" hidden>
-            <label for="feedback">What should the planner adjust?</label>
+            <p class="feedback-hint" id="feedback-hint"></p>
+            <label for="feedback" id="feedback-label">What should the planner adjust?</label>
             <textarea id="feedback" rows="3" placeholder="e.g. Add more food experiences and keep day 3 indoors."></textarea>
             <div class="feedback-actions">
               <button class="btn btn-primary" id="send-feedback"><i class="fa-solid fa-paper-plane"></i> Send to planner</button>
@@ -230,6 +257,12 @@
           <p>A real pause in the graph (LangGraph interrupt) that resumes exactly where it stopped — with your decision.</p>
           <ul><li><i class="fa-solid fa-thumbs-up"></i> approve</li><li><i class="fa-solid fa-pen"></i> modify</li><li><i class="fa-solid fa-thumbs-down"></i> reject</li></ul>
         </article>
+        <article class="agent-card">
+          <div class="agent-icon finalize"><i class="fa-solid fa-map-location-dot"></i></div>
+          <h3>Finalize Agent</h3>
+          <p>Expands your approved draft into a rich itinerary, then geocodes every stop and computes walking/driving legs on an interactive map.</p>
+          <ul><li><i class="fa-solid fa-route"></i> build_route_map</li><li><i class="fa-solid fa-clock"></i> leg time estimates</li><li><i class="fa-solid fa-ruler"></i> total km traveled</li></ul>
+        </article>
       </div>
     </section>
   </main>
@@ -242,7 +275,9 @@
   <!-- Toast container -->
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="js/api.js"></script>
+  <script src="js/maps.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
