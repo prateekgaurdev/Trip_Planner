@@ -184,6 +184,8 @@ def infer_llm_label(system: str) -> str:
     s = system.lower()
     if "research" in s and "analyst" in s:
         return "research_summarize"
+    if "review-ready draft" in s:
+        return "planner_draft"
     if "skeletal schedule" in s or "day-by-day skeletal" in s:
         return "planner_schedule"
     if "finalizing" in s or "finaliz" in s:

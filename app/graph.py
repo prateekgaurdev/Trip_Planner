@@ -16,7 +16,6 @@ from langgraph.graph import END, START, StateGraph
 
 from app.config import get_settings
 from app.nodes import (
-    finalize_enrich,
     finalize_expand,
     finalize_pack,
     human_gate,
@@ -65,7 +64,6 @@ def _build_uncompiled() -> StateGraph:
     g.add_node("planner_agent", _logged("planner_agent", planner_agent))
     g.add_node("human_gate", _logged("human_gate", human_gate))
     g.add_node("finalize_expand", _logged("finalize_expand", finalize_expand))
-    g.add_node("finalize_enrich", _logged("finalize_enrich", finalize_enrich))
     g.add_node("finalize_pack", _logged("finalize_pack", finalize_pack))
 
     g.add_edge(START, "orchestrator")
@@ -84,8 +82,7 @@ def _build_uncompiled() -> StateGraph:
             "human_gate": "human_gate",
         },
     )
-    g.add_edge("finalize_expand", "finalize_enrich")
-    g.add_edge("finalize_enrich", "finalize_pack")
+    g.add_edge("finalize_expand", "finalize_pack")
     g.add_edge("finalize_pack", END)
     return g
 

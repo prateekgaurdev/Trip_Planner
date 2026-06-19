@@ -13,6 +13,7 @@ import asyncio
 import datetime as dt
 import math
 import re
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -61,6 +62,31 @@ async def get_exchange_rate(base_currency: str = "USD") -> dict[str, Any]:
 # weather, and it justifies itself by directly informing the itinerary.
 _GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+_GEOCODE_CACHE_TTL = 3600
+_geocode_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
+
+
+class _GeocodeCacheMiss:
+    """Sentinel — geocode cache miss (distinct from cached None)."""
+
+
+def _geocode_cache_key(name: str, destination: str) -> str:
+    return f"{name.strip().lower()}|{destination.split(',')[0].strip().lower()}"
+
+
+def _geocode_cache_get(key: str) -> dict[str, Any] | None | _GeocodeCacheMiss:
+    entry = _geocode_cache.get(key)
+    if not entry:
+        return _GeocodeCacheMiss()
+    expires, value = entry
+    if time.time() >= expires:
+        _geocode_cache.pop(key, None)
+        return _GeocodeCacheMiss()
+    return value
+
+
+def _geocode_cache_set(key: str, value: dict[str, Any] | None) -> None:
+    _geocode_cache[key] = (time.time() + _GEOCODE_CACHE_TTL, value)
 
 
 async def get_weather(
@@ -80,6 +106,17 @@ async def get_weather(
             "available": True,
             "source": "stub",
             "daily": [{"date": start_date, "summary": "Mild, partly cloudy", "rain_mm": 0.0}],
+        }
+
+    today = dt.date.today()
+    try:
+        trip_start = dt.date.fromisoformat(start_date)
+    except ValueError:
+        trip_start = today
+    if (trip_start - today).days > 16:
+        return {
+            "available": False,
+            "reason": "Forecast horizon exceeded (trip is >16 days out).",
         }
 
     t0 = api_start("OpenMeteo", "forecast", destination=destination.split(",")[0][:40])
@@ -381,6 +418,11 @@ async def geocode_place(
     bias: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Resolve a place name — Photon (biased) → Open-Meteo → Nominatim."""
+    cache_key = _geocode_cache_key(name, destination)
+    cached = _geocode_cache_get(cache_key)
+    if not isinstance(cached, _GeocodeCacheMiss):
+        return cached
+
     candidates = [name.strip()]
     if destination:
         dest_city = destination.split(",")[0].strip()
@@ -393,6 +435,7 @@ async def geocode_place(
     for query in candidates:
         hit = await _photon_geocode(query, lat=bias_lat, lon=bias_lon)
         if hit:
+            _geocode_cache_set(cache_key, hit)
             return hit
 
     async with httpx.AsyncClient(timeout=12) as http:
@@ -404,20 +447,24 @@ async def geocode_place(
                 if not results:
                     continue
                 hit = results[0]
-                return {
+                result = {
                     "name": hit.get("name") or name,
                     "label": query,
                     "lat": float(hit["latitude"]),
                     "lon": float(hit["longitude"]),
                     "country": hit.get("country"),
                 }
+                _geocode_cache_set(cache_key, result)
+                return result
             except (httpx.HTTPError, KeyError, TypeError, ValueError):
                 continue
 
     for query in candidates:
         hit = await _nominatim_geocode(query)
         if hit:
+            _geocode_cache_set(cache_key, hit)
             return hit
+    _geocode_cache_set(cache_key, None)
     return None
 
 
@@ -638,6 +685,89 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
     }
 
 
+def _fallback_route_map(
+    destination: str, center: dict[str, Any], days: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Fast map when POI geocoding fails — pins stops near destination center."""
+    base_lat, base_lon = center["lat"], center["lon"]
+    day_payloads: list[dict[str, Any]] = []
+    total_km = 0.0
+    total_min = 0
+
+    for i, day in enumerate(days):
+        acts = day.get("activities") or []
+        labels = [_activity_label(a) for a in acts if _activity_label(a)]
+        if not labels:
+            continue
+        markers = []
+        for j, label in enumerate(labels):
+            lat = base_lat + (i * 0.015) + (j * 0.006)
+            lon = base_lon + (i * 0.012) + (j * 0.008)
+            time_val = acts[j].get("time") if j < len(acts) and isinstance(acts[j], dict) else ""
+            markers.append(
+                {
+                    "order": j + 1,
+                    "name": label,
+                    "label": label,
+                    "lat": round(lat, 5),
+                    "lon": round(lon, 5),
+                    "time": time_val,
+                    "title": label,
+                }
+            )
+        if len(markers) < 1:
+            continue
+        legs = []
+        for j in range(len(markers) - 1):
+            leg_km = round(0.6 + j * 0.2, 2)
+            leg_min = max(5, round(leg_km * 10))
+            legs.append(
+                {
+                    "from": markers[j],
+                    "to": markers[j + 1],
+                    "distance_km": leg_km,
+                    "duration_minutes": leg_min,
+                    "mode": "walking",
+                    "geometry": [
+                        [markers[j]["lon"], markers[j]["lat"]],
+                        [markers[j + 1]["lon"], markers[j + 1]["lat"]],
+                    ],
+                    "source": "estimate",
+                }
+            )
+            total_km += leg_km
+            total_min += leg_min
+        day_payloads.append(
+            {
+                "day_number": day.get("day_number") or (i + 1),
+                "date": day.get("date", ""),
+                "title": day.get("title", f"Day {i + 1}"),
+                "color": _DAY_COLORS[i % len(_DAY_COLORS)],
+                "distance_km": round(sum(l["distance_km"] for l in legs), 2),
+                "duration_minutes": sum(l["duration_minutes"] for l in legs),
+                "markers": markers,
+                "legs": legs,
+            }
+        )
+
+    if not day_payloads:
+        return {"available": False, "reason": "No mappable activities.", "destination_center": center}
+
+    return {
+        "available": True,
+        "source": "fallback-center",
+        "destination_center": center,
+        "totals": {
+            "distance_km": round(total_km, 2),
+            "duration_minutes": total_min,
+            "legs": sum(len(d["legs"]) for d in day_payloads),
+            "days": len(day_payloads),
+            "stops": sum(len(d["markers"]) for d in day_payloads),
+        },
+        "days": day_payloads,
+    }
+
+
 async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, Any]:
     """Geocode itinerary stops, compute leg distances/times, and build map geometry.
 
@@ -672,12 +802,21 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
                 unique_labels.append(label)
 
     geocode_cache: dict[str, dict[str, Any] | None] = {}
+    _GEO_SEM = asyncio.Semaphore(6)
+    labels_to_geocode = unique_labels[:10]
 
     async def _geocode_label(label: str) -> None:
-        geocode_cache[label] = await geocode_place(label, destination, bias=center)
+        async with _GEO_SEM:
+            try:
+                geocode_cache[label] = await asyncio.wait_for(
+                    geocode_place(label, destination, bias=center),
+                    timeout=4.0,
+                )
+            except asyncio.TimeoutError:
+                geocode_cache[label] = None
 
-    if unique_labels:
-        await asyncio.gather(*(_geocode_label(label) for label in unique_labels))
+    if labels_to_geocode:
+        await asyncio.gather(*(_geocode_label(label) for label in labels_to_geocode))
 
     day_payloads: list[dict[str, Any]] = []
     total_km = 0.0
@@ -771,12 +910,8 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
         )
 
     if not day_payloads:
-        api_end("RouteMap", "build", t0, ok=False, reason="not enough stops")
-        return {
-            "available": False,
-            "reason": "Could not geocode enough stops for a route map.",
-            "destination_center": center,
-        }
+        api_end("RouteMap", "build", t0, ok=True, mode="fallback")
+        return _fallback_route_map(destination, center, days)
 
     from app.config import get_settings
     settings = get_settings()

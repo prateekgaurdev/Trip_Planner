@@ -140,14 +140,12 @@ class StubLLM:
                                 "time": "09:30",
                                 "title": "Historic old town walking area",
                                 "description": "Explore cobbled lanes and local architecture.",
-                                "image_keyword": "old town",
                                 "location_name": "Historic old town",
                             },
                             {
                                 "time": "13:00",
                                 "title": "Renowned local food market",
                                 "description": "Sample regional specialties and street food.",
-                                "image_keyword": "food market",
                                 "location_name": "Local food market",
                             },
                         ],
@@ -162,19 +160,38 @@ class StubLLM:
                                 "time": "10:00",
                                 "title": "Scenic riverside park",
                                 "description": "Stroll along the waterfront and people-watch.",
-                                "image_keyword": "riverside",
                                 "location_name": "Riverside park",
                             },
                             {
                                 "time": "15:00",
                                 "title": "City museum",
                                 "description": "Dive into local history and art.",
-                                "image_keyword": "museum",
                                 "location_name": "City museum",
                             },
                         ],
                     },
                 ]
+            }
+        if "review-ready draft" in sys_lower:
+            return {
+                "days": [
+                    {
+                        "day_number": 1,
+                        "date": "2026-09-10",
+                        "focus": "flexible",
+                        "activities": ["Historic old town walking area", "Local food market"],
+                        "weather_note": "",
+                    },
+                    {
+                        "day_number": 2,
+                        "date": "2026-09-11",
+                        "focus": "indoor",
+                        "activities": ["Scenic riverside park", "City museum"],
+                        "weather_note": "",
+                    },
+                ],
+                "summary": "A balanced trip blending culture, food, and rest.",
+                "notes": ["Stubbed plan generated without an LLM."],
             }
         if "skeletal schedule" in sys_lower or "day-by-day skeletal" in sys_lower:
             return {

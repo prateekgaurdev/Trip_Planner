@@ -307,9 +307,25 @@ async def search_flights(
         airport_records_for_codes,
         resolve_iata_codes_with_fallback,
     )
+    from app.services.travel_cache import get_cached, set_cached
 
     if not origin_city.strip() or not destination_city.strip():
         return {"available": False, "reason": "From and To cities are required for flights."}
+
+    cache_key = {
+        "origin": origin_city.strip().lower(),
+        "destination": destination_city.strip().lower(),
+        "outbound": outbound_date,
+        "return": return_date,
+        "adults": adults,
+        "currency": currency.upper(),
+    }
+    if not stubs_enabled():
+        cached = get_cached("flights", cache_key)
+        if cached is not None:
+            from app.pipeline_log import LOG
+            LOG.debug("Travel cache hit | flights | %s -> %s", origin_city, destination_city)
+            return cached
 
     if stubs_enabled():
         origin_airports = airport_records_for_codes(["DEL"] if "delhi" in origin_city.lower() else ["AAA"])
@@ -334,17 +350,23 @@ async def search_flights(
         }
 
     pairs: list[tuple[str, str]] = [(origin_codes[0], dest_codes[0])]
-    if len(dest_codes) > 1 and dest_codes[1] != dest_codes[0]:
-        pairs.append((origin_codes[0], dest_codes[1]))
+    for alt in dest_codes[1:]:
+        if alt != dest_codes[0] and alt != origin_codes[0]:
+            pairs.append((origin_codes[0], alt))
+            break
 
-    batches = await asyncio.gather(
-        *[
-            _fetch_iata_pair(dep, arr, outbound_date, return_date, adults=adults, currency=currency)
-            for dep, arr in pairs[:2]
-        ]
+    # If primary route already returned offers, skip alternate pair (saves ~0.5-1s).
+    primary = await _fetch_iata_pair(
+        pairs[0][0], pairs[0][1], outbound_date, return_date, adults=adults, currency=currency
     )
-
-    offers: list[dict[str, Any]] = []
+    offers: list[dict[str, Any]] = list(primary)
+    if len(pairs) > 1 and len(offers) < 3:
+        secondary = await _fetch_iata_pair(
+            pairs[1][0], pairs[1][1], outbound_date, return_date, adults=adults, currency=currency
+        )
+        batches = [primary, secondary]
+    else:
+        batches = [primary]
     seen: set[tuple[Any, ...]] = set()
     for batch in batches:
         for offer in batch:
@@ -374,7 +396,7 @@ async def search_flights(
             "resolved_route": f"{origin_codes[0]} -> {dest_codes[0]}",
         }
 
-    return {
+    result = {
         "available": True,
         "source": "serpapi",
         "origin_city": origin_city,
@@ -386,6 +408,8 @@ async def search_flights(
         "currency": currency,
         "offers": offers[:8],
     }
+    set_cached("flights", cache_key, result)
+    return result
 
 
 async def search_hotels(
@@ -397,6 +421,22 @@ async def search_hotels(
     currency: str = "USD",
 ) -> dict[str, Any]:
     """Hotel offers for the trip destination (optional price check)."""
+    from app.services.travel_cache import get_cached, set_cached
+
+    cache_key = {
+        "destination": destination.strip().lower(),
+        "check_in": check_in,
+        "check_out": check_out,
+        "adults": adults,
+        "currency": currency.upper(),
+    }
+    if not stubs_enabled():
+        cached = get_cached("hotels", cache_key)
+        if cached is not None:
+            from app.pipeline_log import LOG
+            LOG.debug("Travel cache hit | hotels | %s", destination)
+            return cached
+
     if stubs_enabled():
         return _stub_hotels(destination)
 
@@ -428,7 +468,7 @@ async def search_hotels(
             "destination": destination,
         }
 
-    return {
+    result = {
         "available": True,
         "source": "serpapi",
         "destination": destination,
@@ -437,6 +477,8 @@ async def search_hotels(
         "currency": currency,
         "offers": offers,
     }
+    set_cached("hotels", cache_key, result)
+    return result
 
 
 async def fetch_travel_options(preferences: dict[str, Any]) -> dict[str, Any]:
