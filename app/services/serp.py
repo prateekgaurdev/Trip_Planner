@@ -1,8 +1,7 @@
 """SerpAPI integrations — optional flight & hotel price discovery.
 
-Flight search uses LLM-resolved nearby airports (2 per city) and compares
-SerpAPI offers across airport pairs. Results are informational only and are
-kept separate from the itinerary route map.
+Flight search resolves cities to IATA airport codes (OpenFlights + aliases)
+and queries SerpAPI Google Flights. Results are informational only.
 """
 from __future__ import annotations
 
@@ -16,13 +15,15 @@ from app.config import stubs_enabled
 
 _SERP_URL = "https://serpapi.com/search.json"
 
+_GL_BY_CURRENCY = {"INR": "in", "USD": "us", "EUR": "de", "GBP": "gb", "AUD": "au", "CAD": "ca"}
+
 
 async def _serp_get(params: dict[str, Any]) -> dict[str, Any]:
     from app.config import get_settings
     from app.pipeline_log import api_end, api_start
 
     engine = params.get("engine", "serp")
-    t0 = api_start("SerpAPI", engine, q=str(params.get("q") or params.get("departure_id") or "")[:40])
+    t0 = api_start("SerpAPI", engine, q=str(params.get("q") or f"{params.get('departure_id', '')}->{params.get('arrival_id', '')}" or "")[:40])
     key = get_settings().serpapi_key
     if not key:
         api_end("SerpAPI", engine, t0, ok=False, reason="no key")
@@ -45,30 +46,25 @@ async def _serp_get(params: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _resolve_flight_location(query: str) -> str | None:
-    """Resolve an airport/city to a Google Flights location id via autocomplete."""
-    if not query.strip():
-        return None
-    data = await _serp_get({"engine": "google_flights_autocomplete", "q": query.strip()})
-    if data.get("available") is False:
-        return None
-    for key in ("airports", "cities", "places"):
-        items = data.get(key) or []
-        if items:
-            hit = items[0]
-            return hit.get("id") or hit.get("code") or hit.get("name")
-    return None
+    """Resolve to an IATA airport code (SerpAPI accepts IATA directly)."""
+    from app.services.airport_lookup import lookup_iata_codes, resolve_iata_codes_with_fallback
+
+    codes = lookup_iata_codes(query, max_codes=1)
+    if codes:
+        return codes[0]
+    resolved = await resolve_iata_codes_with_fallback(query, serp_get=_serp_get)
+    return resolved[0] if resolved else None
 
 
-async def _resolve_airport_id(airport: dict[str, str]) -> str | None:
-    """Resolve an LLM airport record to a SerpAPI departure/arrival id."""
-    iata = airport.get("iata", "")
-    name = airport.get("name", "")
-    for query in (f"{iata} airport", f"{name} ({iata})", name, iata):
-        if not query.strip():
-            continue
-        loc_id = await _resolve_flight_location(query)
-        if loc_id:
-            return loc_id
+def _extract_price(raw: Any) -> int | float | str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return raw
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, dict):
+        return raw.get("extracted_price") or raw.get("raw") or raw.get("lowest")
     return None
 
 
@@ -91,23 +87,25 @@ def _parse_flight_offers(
             last = legs[-1] if legs else {}
             dep = first.get("departure_airport") or {}
             arr = last.get("arrival_airport") or {}
+            dep_code = (dep.get("id") or dep_iata or "").upper()
+            arr_code = (arr.get("id") or arr_iata or "").upper()
             airlines = ", ".join(
                 dict.fromkeys(leg.get("airline", "") for leg in legs if leg.get("airline"))
             )
             offers.append(
                 {
-                    "price": item.get("price"),
+                    "price": _extract_price(item.get("price")),
                     "total_duration": item.get("total_duration"),
                     "airlines": airlines,
-                    "departure": dep.get("name") or dep.get("id") or dep_name,
+                    "departure": dep.get("name") or dep_name,
                     "departure_time": dep.get("time") or "",
-                    "arrival": arr.get("name") or arr.get("id") or arr_name,
+                    "arrival": arr.get("name") or arr_name,
                     "arrival_time": arr.get("time") or "",
                     "stops": max(0, len(legs) - 1),
                     "type": item.get("type") or bucket.replace("_", " "),
-                    "route_iata": f"{dep_iata} → {arr_iata}",
-                    "departure_iata": dep_iata,
-                    "arrival_iata": arr_iata,
+                    "route_iata": f"{dep_code} -> {arr_code}",
+                    "departure_iata": dep_code,
+                    "arrival_iata": arr_code,
                 }
             )
     return offers
@@ -245,43 +243,54 @@ def _stub_hotels(destination: str) -> dict[str, Any]:
     }
 
 
-async def _search_airport_pair(
-    dep_airport: dict[str, str],
-    arr_airport: dict[str, str],
+async def _fetch_iata_pair(
+    dep_iata: str,
+    arr_iata: str,
     outbound_date: str,
     return_date: str,
     *,
     adults: int,
     currency: str,
 ) -> list[dict[str, Any]]:
-    dep_id = await _resolve_airport_id(dep_airport)
-    arr_id = await _resolve_airport_id(arr_airport)
-    if not dep_id or not arr_id:
-        return []
-
+    gl = _GL_BY_CURRENCY.get(currency.upper(), "us")
     data = await _serp_get(
         {
             "engine": "google_flights",
-            "departure_id": dep_id,
-            "arrival_id": arr_id,
+            "departure_id": dep_iata,
+            "arrival_id": arr_iata,
             "outbound_date": outbound_date,
             "return_date": return_date,
             "type": "1",
             "adults": max(1, adults),
             "currency": currency,
             "hl": "en",
+            "gl": gl,
         }
     )
     if data.get("available") is False:
         return []
 
+    index = _openflights_names()
+    dep_name = index.get(dep_iata, dep_iata)
+    arr_name = index.get(arr_iata, arr_iata)
     return _parse_flight_offers(
         data,
-        dep_iata=dep_airport["iata"],
-        arr_iata=arr_airport["iata"],
-        dep_name=dep_airport["name"],
-        arr_name=arr_airport["name"],
+        dep_iata=dep_iata,
+        arr_iata=arr_iata,
+        dep_name=dep_name,
+        arr_name=arr_name,
+        limit=8,
     )
+
+
+def _openflights_names() -> dict[str, str]:
+    from app.services.airport_lookup import _openflights_index
+
+    names: dict[str, str] = {}
+    for airports in _openflights_index().values():
+        for a in airports:
+            names.setdefault(a["iata"], a["name"])
+    return names
 
 
 async def search_flights(
@@ -293,56 +302,76 @@ async def search_flights(
     adults: int = 1,
     currency: str = "USD",
 ) -> dict[str, Any]:
-    """Round-trip flight offers — fast single-route search via SerpAPI."""
+    """Round-trip flight offers via SerpAPI Google Flights (IATA airport codes)."""
+    from app.services.airport_lookup import (
+        airport_records_for_codes,
+        resolve_iata_codes_with_fallback,
+    )
+
     if not origin_city.strip() or not destination_city.strip():
         return {"available": False, "reason": "From and To cities are required for flights."}
 
     if stubs_enabled():
-        origin_airports = _stub_airports(origin_city)
-        dest_airports = _stub_airports(destination_city)
+        origin_airports = airport_records_for_codes(["DEL"] if "delhi" in origin_city.lower() else ["AAA"])
+        dest_airports = airport_records_for_codes(["DED"] if "rishikesh" in destination_city.lower() else ["BBB"])
         result = _stub_flights(origin_city, destination_city, origin_airports, dest_airports)
         result["outbound_date"] = outbound_date
         result["return_date"] = return_date
         result["currency"] = currency
         return result
 
-    dep_id, arr_id = await asyncio.gather(
-        _resolve_flight_location(origin_city),
-        _resolve_flight_location(destination_city),
+    origin_codes, dest_codes = await asyncio.gather(
+        resolve_iata_codes_with_fallback(origin_city, serp_get=_serp_get),
+        resolve_iata_codes_with_fallback(destination_city, serp_get=_serp_get),
     )
-    if not dep_id or not arr_id:
-        return {"available": False, "reason": "Could not resolve flight cities."}
 
-    data = await _serp_get(
-        {
-            "engine": "google_flights",
-            "departure_id": dep_id,
-            "arrival_id": arr_id,
-            "outbound_date": outbound_date,
-            "return_date": return_date,
-            "type": "1",
-            "adults": max(1, adults),
-            "currency": currency,
-            "hl": "en",
+    if not origin_codes or not dest_codes:
+        return {
+            "available": False,
+            "reason": "Could not resolve airports for the cities.",
+            "origin_city": origin_city,
+            "destination_city": destination_city,
         }
-    )
-    if data.get("available") is False:
-        return data
 
-    offers = _parse_flight_offers(
-        data,
-        dep_iata=origin_city.split(",")[0][:3].upper(),
-        arr_iata=destination_city.split(",")[0][:3].upper(),
-        dep_name=origin_city,
-        arr_name=destination_city,
-        limit=8,
+    pairs: list[tuple[str, str]] = [(origin_codes[0], dest_codes[0])]
+    if len(dest_codes) > 1 and dest_codes[1] != dest_codes[0]:
+        pairs.append((origin_codes[0], dest_codes[1]))
+
+    batches = await asyncio.gather(
+        *[
+            _fetch_iata_pair(dep, arr, outbound_date, return_date, adults=adults, currency=currency)
+            for dep, arr in pairs[:2]
+        ]
     )
+
+    offers: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for batch in batches:
+        for offer in batch:
+            key = (
+                offer.get("route_iata"),
+                offer.get("price"),
+                offer.get("airlines"),
+                offer.get("departure_time"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            offers.append(offer)
+
+    offers.sort(key=_price_sort_key)
+
+    origin_airports = airport_records_for_codes(origin_codes[:2])
+    dest_airports = airport_records_for_codes(dest_codes[:2])
+
     if not offers:
         return {
             "available": False,
-            "reason": "No flight offers returned.",
+            "reason": "No flight offers returned for this route.",
             "origin_city": origin_city,
             "destination_city": destination_city,
+            "airports": {"origin": origin_airports, "destination": dest_airports},
+            "resolved_route": f"{origin_codes[0]} -> {dest_codes[0]}",
         }
 
     return {
@@ -350,17 +379,13 @@ async def search_flights(
         "source": "serpapi",
         "origin_city": origin_city,
         "destination_city": destination_city,
+        "airports": {"origin": origin_airports, "destination": dest_airports},
+        "resolved_route": f"{origin_codes[0]} -> {dest_codes[0]}",
         "outbound_date": outbound_date,
         "return_date": return_date,
         "currency": currency,
-        "offers": offers,
+        "offers": offers[:8],
     }
-
-
-def _stub_airports(city: str) -> list[dict[str, str]]:
-    slug = city.split(",")[0].strip()
-    code = slug[:3].upper() if slug else "XXX"
-    return [{"name": f"{slug} Airport", "iata": code, "city": slug, "note": ""}]
 
 
 async def search_hotels(
@@ -379,6 +404,7 @@ async def search_hotels(
         return {"available": False, "reason": "Destination required for hotels."}
 
     dest_city = destination.split(",")[0].strip()
+    gl = _GL_BY_CURRENCY.get(currency.upper(), "us")
     data = await _serp_get(
         {
             "engine": "google_hotels",
@@ -387,7 +413,7 @@ async def search_hotels(
             "check_out_date": check_out,
             "adults": max(1, adults),
             "currency": currency,
-            "gl": "us",
+            "gl": gl,
             "hl": "en",
         }
     )
@@ -458,5 +484,6 @@ async def fetch_travel_options(preferences: dict[str, Any]) -> dict[str, Any]:
     result["recommendations"] = build_travel_recommendations(result, preferences)
     flight_n = len((flights or {}).get("offers") or []) if flights and flights.get("available") else 0
     hotel_n = len((hotels or {}).get("offers") or []) if hotels and hotels.get("available") else 0
-    api_end("Travel", "fetch_options", t0, flights=flight_n, hotels=hotel_n)
+    route = (flights or {}).get("resolved_route") if flights else None
+    api_end("Travel", "fetch_options", t0, flights=flight_n, hotels=hotel_n, route=route or "-")
     return result
