@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wayfarer · Community Trip Details</title>
+  <meta name="description" content="Explore complete community-shared travel itineraries with interactive route maps, lodging base camps, structured reviews, and AI remixes." />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="css/style.css?v=4" />
+</head>
+<body class="community-trip-page-body">
+
+  <!-- ─── Top Global Navigation ───────────────────────────────── -->
+  <header class="site-header">
+    <div style="display:flex; align-items:center; gap:16px;">
+      <a href="community.html" class="btn btn-ghost btn-sm" id="btn-back-feed">
+        <i class="fa-solid fa-arrow-left"></i> <span>Community Hub</span>
+      </a>
+      <a class="brand" href="index.html" aria-label="Wayfarer home">
+        <span class="brand-mark"><i class="fa-solid fa-compass"></i></span>
+        <span class="brand-name">Wayfarer</span>
+      </a>
+    </div>
+
+    <nav class="site-nav" aria-label="Primary">
+      <a href="index.html" class="nav-link"><i class="fa-solid fa-compass"></i> AI Planner</a>
+      <a href="community.html" class="nav-link active"><i class="fa-solid fa-users"></i> Community Hub</a>
+      <div id="auth-nav-pill" class="auth-nav-pill">
+        <button type="button" class="btn btn-auth-pill" id="open-auth-btn"><i class="fa-solid fa-user"></i> <span>Sign In</span></button>
+      </div>
+      <span class="api-pill" id="api-status" title="Backend connection">
+        <span class="dot"></span><span id="api-status-text">Checking API…</span>
+      </span>
+    </nav>
+  </header>
+
+  <main id="top">
+    <!-- ─── Full-Page Trip Hero Banner ──────────────────────────── -->
+    <section class="trip-fullpage-hero" id="trip-hero">
+      <div class="trip-hero-content-wrap">
+        <div class="trip-hero-top-badges">
+          <span class="trip-dest-badge" id="trip-dest-badge"><i class="fa-solid fa-location-dot"></i> Destination</span>
+          <span class="trip-duration-badge" id="trip-duration-badge"><i class="fa-solid fa-calendar-days"></i> Duration</span>
+          <span class="trip-rating-badge" id="trip-rating-badge"><span class="star-icon">★</span> 5.0 (0 reviews)</span>
+        </div>
+
+        <h1 class="trip-fullpage-title" id="trip-title">Loading Itinerary...</h1>
+        <p class="trip-fullpage-sub" id="trip-sub"></p>
+
+        <!-- Author Byline & Action Bar -->
+        <div class="trip-author-actions-bar">
+          <div class="trip-author-card">
+            <img src="https://ui-avatars.com/api/?name=Traveler" alt="" id="trip-author-avatar" class="author-img-large" />
+            <div class="author-copy">
+              <span class="author-name" id="trip-author-name">Traveler</span>
+              <span class="author-meta" id="trip-created-meta">Published on Wayfarer Community</span>
+            </div>
+          </div>
+
+          <div class="trip-hero-ctas">
+            <button type="button" class="btn-like-pill" id="trip-like-btn">
+              <i class="fa-solid fa-heart"></i> <span id="trip-like-count">0</span> Upvotes
+            </button>
+            <a href="#comm-reviews-section" class="btn btn-outline btn-sm">
+              <i class="fa-solid fa-comments"></i> Reviews &amp; Pro Tips
+            </a>
+            <a href="index.html" class="btn btn-primary btn-sm" id="btn-fork-trip">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Customize in Studio
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Full-Page 2-Column Dashboard ────────────────────────── -->
+    <section class="trip-dashboard-wrapper">
+      <div class="trip-dashboard-grid">
+        
+        <!-- Left Main Column (68% width): Itinerary & Map -->
+        <div class="trip-main-content">
+          <!-- Quick Specs Strip -->
+          <div class="trip-specs-strip" id="trip-specs-strip">
+            <!-- Dynamically rendered -->
+          </div>
+
+          <!-- Lodging Base Camp Anchor Card -->
+          <div class="trip-lodging-card" id="trip-lodging-box">
+            <!-- Dynamically rendered -->
+          </div>
+
+          <!-- Corridor Card (if inter-city) -->
+          <div class="trip-corridor-card" id="trip-corridor-box" hidden>
+            <!-- Dynamically rendered -->
+          </div>
+
+          <!-- Interactive Route Map -->
+          <div class="trip-map-section" id="trip-map-section">
+            <div class="section-card-head">
+              <h3><i class="fa-solid fa-map-location-dot"></i> Interactive Route &amp; Neighborhood Clusters</h3>
+              <span class="map-hint">Closed-circuit daily legs with lodging base anchors</span>
+            </div>
+            <div id="trip-map-container" class="trip-leaflet-map"></div>
+          </div>
+
+          <!-- Day-by-Day Schedule -->
+          <div class="trip-days-container">
+            <div class="section-card-head">
+              <h3><i class="fa-solid fa-route"></i> Day-by-Day Curated Schedule</h3>
+              <span class="map-hint">Structured with departure anchors &amp; transit legs</span>
+            </div>
+            <div id="trip-days-list" class="trip-days-list">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column (32% width): AI Remix & Structured Community Reviews -->
+        <aside class="trip-side-content" id="comm-reviews-section">
+          <!-- AI Community Remix Card -->
+          <div class="side-remix-card">
+            <div class="remix-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> Multi-Agent Intelligence</div>
+            <h4>✨ AI Community Remix</h4>
+            <p>Synthesize all community reviews, restaurant tips, and route recommendations into an upgraded itinerary.</p>
+            
+            <div class="form-field" style="margin-top:12px;">
+              <input type="text" id="remix-custom-note" placeholder="Optional custom request (e.g. add vegan spots)..." />
+            </div>
+
+            <button type="button" class="btn btn-primary btn-block" id="btn-trigger-remix">
+              <i class="fa-solid fa-bolt"></i> Remix with Community Wisdom
+            </button>
+            <div class="remix-result-display" id="remix-result-display" hidden></div>
+          </div>
+
+          <!-- Structured Reviews & Pro Tips Container -->
+          <div class="side-reviews-card">
+            <div class="reviews-header-block">
+              <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                <h4><i class="fa-solid fa-comments"></i> Community Reviews</h4>
+                <span class="reviews-count-tag" id="reviews-count-tag">0 reviews</span>
+              </div>
+              <p>Real traveler feedback: what worked and actionable insider tips.</p>
+            </div>
+
+            <!-- Review Submission Form -->
+            <form id="trip-review-form" class="review-compose-form" onsubmit="return false;">
+              <div class="star-rating-row">
+                <label>Your Overall Rating:</label>
+                <div class="star-picker" id="star-picker">
+                  <button type="button" class="star-pick-btn" data-val="1">★</button>
+                  <button type="button" class="star-pick-btn" data-val="2">★</button>
+                  <button type="button" class="star-pick-btn" data-val="3">★</button>
+                  <button type="button" class="star-pick-btn" data-val="4">★</button>
+                  <button type="button" class="star-pick-btn active" data-val="5">★</button>
+                  <input type="hidden" id="form-rating-val" value="5" />
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label for="review-liked-input"><i class="fa-solid fa-thumbs-up" style="color:#0f766e;"></i> What did you like about this itinerary?</label>
+                <textarea id="review-liked-input" rows="2" required placeholder="e.g. Loved the Higashiyama temple sequence on Day 1..."></textarea>
+              </div>
+
+              <div class="form-field">
+                <label for="review-add-input"><i class="fa-solid fa-lightbulb" style="color:#f59e0b;"></i> What should be added to make it more wonderful?</label>
+                <textarea id="review-add-input" rows="2" required placeholder="e.g. On Day 3, book Gion Duck Noodles early! Rent an e-bike in Arashiyama..."></textarea>
+              </div>
+
+              <div class="form-field">
+                <label for="review-comment-input">Additional traveler context (Optional):</label>
+                <input type="text" id="review-comment-input" placeholder="e.g. Visited in late October, crisp weather." />
+              </div>
+
+              <button type="submit" class="btn btn-outline btn-block" id="btn-submit-review">
+                <i class="fa-solid fa-paper-plane"></i> Post Review &amp; Suggestions
+              </button>
+            </form>
+
+            <!-- List of existing structured reviews -->
+            <div class="trip-reviews-feed" id="trip-reviews-feed">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+        </aside>
+
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p><span class="brand-mark small"><i class="fa-solid fa-compass"></i></span> Wayfarer Community Hub &bull; Powered by Supabase PostgreSQL &amp; LangGraph.</p>
+    <p class="muted"><a href="community.html" style="color:var(--brand); text-decoration:underline;">&larr; Back to Community Feed</a> &bull; <a href="index.html" style="color:var(--brand); text-decoration:underline;">AI Travel Planner</a></p>
+  </footer>
+
+  <!-- Toast stack container -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <!-- ─── Supabase Auth Modal ──────────────────────────────────── -->
+  <div class="modal-overlay" id="auth-modal" hidden>
+    <div class="modal-card auth-modal-card">
+      <button type="button" class="modal-close-btn" id="auth-modal-close"><i class="fa-solid fa-xmark"></i></button>
+      <div class="auth-header">
+        <div class="auth-brand"><i class="fa-solid fa-compass"></i> Wayfarer Travelers</div>
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab-btn active" id="tab-login-btn">Sign In</button>
+          <button type="button" class="auth-tab-btn" id="tab-signup-btn">Create Account</button>
+        </div>
+      </div>
+
+      <form id="login-form" class="auth-form" onsubmit="return false;">
+        <div class="form-field">
+          <label for="login-email">Email Address</label>
+          <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-field">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" required placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <p class="auth-error-msg" id="login-error" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" id="login-submit-btn">Sign In to Wayfarer</button>
+      </form>
+
+      <form id="signup-form" class="auth-form" onsubmit="return false;" hidden>
+        <div class="form-field">
+          <label for="signup-name">Full Name</label>
+          <input type="text" id="signup-name" required placeholder="e.g. Elena Rostova" />
+        </div>
+        <div class="form-field">
+          <label for="signup-email">Email Address</label>
+          <input type="email" id="signup-email" required placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="form-field">
+          <label for="signup-password">Password (min 6 chars)</label>
+          <input type="password" id="signup-password" minlength="6" required placeholder="Create a password" autocomplete="new-password" />
+        </div>
+        <div class="form-field">
+          <label for="signup-bio">Bio &amp; Travel Style (Optional)</label>
+          <input type="text" id="signup-bio" placeholder="e.g. Cultural photographer, temple enthusiast" />
+        </div>
+        <p class="auth-error-msg" id="signup-error" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" id="signup-submit-btn">Create Account &amp; Join Community</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="js/api.js?v=4"></script>
+  <script src="js/maps.js?v=4"></script>
+  <script src="js/community-trip.js?v=4"></script>
+</body>
+</html>

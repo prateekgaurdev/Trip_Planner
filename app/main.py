@@ -988,6 +988,17 @@ async def community_page():
     return FileResponse(os.path.join(frontend_dir, "index.html"))
 
 
+@app.get("/community/trip", tags=["meta"])
+@app.get("/community/trip/", tags=["meta"])
+@app.get("/community-trip.html", tags=["meta"])
+async def community_trip_page():
+    """Serve the full-page dedicated Community Trip inspector."""
+    trip_path = os.path.join(frontend_dir, "community-trip.html")
+    if os.path.exists(trip_path):
+        return FileResponse(trip_path)
+    return FileResponse(os.path.join(frontend_dir, "community.html"))
+
+
 if not os.environ.get("VERCEL"):
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 

@@ -343,6 +343,34 @@
     });
   });
 
+  // ─── Mode Tabs Selection ─────────────────────────────────────
+  document.querySelectorAll('.mode-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const mode = tab.dataset.mode;
+      if (mode === 'weekend') {
+        const now = new Date();
+        const start = new Date(now.getTime() + 7 * 864e5);
+        const end = new Date(start.getTime() + 2 * 864e5);
+        if (els.form.start_date) els.form.start_date.value = start.toISOString().split('T')[0];
+        if (els.form.end_date) els.form.end_date.value = end.toISOString().split('T')[0];
+        updateNightCounter();
+        if (els.form.custom_notes) {
+          els.form.custom_notes.value = 'Action-packed weekend getaway with highlights and rooftop dining.';
+        }
+      } else if (mode === 'romantic') {
+        if (els.form.custom_notes) {
+          els.form.custom_notes.value = 'Romantic honeymoon with slow mornings, private sunset dinner, and scenic walks.';
+        }
+      } else if (mode === 'wellness') {
+        if (els.form.custom_notes) {
+          els.form.custom_notes.value = 'Rejuvenating wellness retreat, daily yoga, clean dining, and serene nature.';
+        }
+      }
+    });
+  });
+
   // ─── Quick Fill from Trending Escapes & Vibe Pills ────────────
   function populateQuickTrip(opts) {
     if (opts.dest && els.form.destination) els.form.destination.value = opts.dest;
@@ -424,6 +452,21 @@
         theme: card.dataset.theme,
         vision: card.dataset.vision,
       });
+    });
+  });
+
+  document.querySelectorAll('.vision-chip').forEach((chip) => {
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      const textarea = document.getElementById('custom_notes');
+      if (!textarea) return;
+      const prompt = chip.dataset.prompt;
+      if (textarea.value.trim()) {
+        textarea.value += ', ' + prompt;
+      } else {
+        textarea.value = prompt;
+      }
+      textarea.focus();
     });
   });
 

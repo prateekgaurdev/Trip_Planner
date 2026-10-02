@@ -27,12 +27,35 @@ _is_initialized = False
 _init_lock = asyncio.Lock()
 
 
+_psycopg_warning_logged = False
+
 def is_postgres() -> bool:
-    """Return True if a PostgreSQL DATABASE_URL is configured and stubs are not enabled."""
+    """Return True if a PostgreSQL DATABASE_URL is configured, stubs are not enabled, and psycopg is installed."""
+    global _psycopg_warning_logged
     if stubs_enabled():
         return False
     url = (get_settings().database_url or "").strip()
-    return url.startswith("postgresql://") or url.startswith("postgres://")
+    if not (url.startswith("postgresql://") or url.startswith("postgres://")):
+        return False
+        
+    try:
+        import psycopg
+        return True
+    except ImportError:
+        if not _psycopg_warning_logged:
+            logger.warning("DATABASE_URL is set but 'psycopg' is not installed. Falling back to SQLite.")
+            _psycopg_warning_logged = True
+        return False
+    url = (get_settings().database_url or "").strip()
+    if not (url.startswith("postgresql://") or url.startswith("postgres://")):
+        return False
+        
+    try:
+        import psycopg
+        return True
+    except ImportError:
+        logger.warning("DATABASE_URL is set but 'psycopg' is not installed. Falling back to SQLite.")
+        return False
 
 
 @asynccontextmanager

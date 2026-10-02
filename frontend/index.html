@@ -11,9 +11,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <link rel="stylesheet" href="css/style.css?v=3" />
+  <link rel="stylesheet" href="css/style.css?v=6" />
 </head>
 <body>
   <!-- ─── Top navigation ───────────────────────────────────────── -->
@@ -37,223 +38,179 @@
   </header>
 
   <main id="top">
-    <!-- ─── Hero / Form (Fuller Wide 2-Column Layout) ────────────── -->
+    <!-- ─── Hero Section (Luminous Light Mode & Restructured Console) ─── -->
     <section class="hero-wide" id="planner">
-      <div class="hero-fuller-grid">
-        <!-- Main / Left Column: Console & Trip Specs -->
-        <div class="hero-main-pane">
-          <div class="hero-kicker-pill"><i class="fa-solid fa-sparkles"></i> AI-Powered Travel Intelligence &bull; LangGraph 0.2+</div>
-          <h1 class="hero-main-title">Where would you like your agents to take you?</h1>
-          <p class="hero-sub">Multi-agent intelligence builds, clusters, prices, and maps your dream journey.</p>
+      <div class="hero-header-wrap">
+        <div class="hero-kicker-pill"><i class="fa-solid fa-sparkles"></i> AI-Powered Travel Intelligence &bull; Multi-Agent StateGraph</div>
+        <h1 class="hero-main-title">Where to next? Plan it effortlessly.</h1>
+        <p class="hero-sub">Autonomous multi-agent intelligence researches, clusters walkable neighborhoods, balances budgets, and schedules around live weather.</p>
+      </div>
 
-          <div class="form-card-wide" id="form-card">
-            <form id="plan-form" action="#" onsubmit="return false;" novalidate>
-              <input type="hidden" id="flight_destination" name="flight_destination" value="" />
-              <input type="hidden" id="include_flights" name="include_flights" value="" />
-              <input type="hidden" id="include_hotels" name="include_hotels" value="on" />
-
-              <!-- Top Row: Segmented Search Console -->
-              <div class="search-console-grid">
-                <!-- FROM -->
-                <div class="console-segment">
-                  <label for="origin">FROM</label>
-                  <div class="input-wrap no-border">
-                    <input type="text" id="origin" name="origin" placeholder="Delhi, India" class="big-input" />
-                  </div>
-                  <span class="segment-sub">Airport / Transit Hub</span>
-                </div>
-                
-                <!-- TO -->
-                <div class="console-segment bordered-left">
-                  <label for="destination">TO / DESTINATION</label>
-                  <div class="input-wrap no-border">
-                    <input type="text" id="destination" name="destination" placeholder="Rishikesh, India" required minlength="2" class="big-input" />
-                  </div>
-                  <span class="segment-sub">City, Country or Region</span>
-                </div>
-                
-                <!-- DATES -->
-                <div class="console-segment bordered-left segment-dates">
-                  <label>DATES (Departure &rarr; Return)</label>
-                  <div class="dates-flex">
-                    <div class="input-wrap no-border">
-                      <input type="date" id="start_date" name="start_date" required class="big-input" />
-                    </div>
-                    <div class="input-wrap no-border">
-                      <input type="date" id="end_date" name="end_date" required class="big-input" />
-                    </div>
-                  </div>
-                  <span class="segment-sub night-counter" id="night-counter">4 Nights &middot; 5 Days</span>
-                </div>
-                
-                <!-- TRAVELERS & BUDGET -->
-                <div class="console-segment bordered-left">
-                  <label>TRAVELERS &amp; BUDGET</label>
-                  <div class="traveler-budget-flex">
-                    <div class="tb-item">
-                      <i class="fa-solid fa-users"></i>
-                      <input type="number" id="travelers" name="travelers" value="2" min="1" max="20" required class="med-input" />
-                    </div>
-                    <div class="tb-item">
-                      <i class="fa-solid fa-coins"></i>
-                      <input type="number" id="budget" name="budget" placeholder="2500" min="1" step="50" required class="med-input" />
-                    </div>
-                    <select id="currency" name="currency" class="med-select" required>
-                      <option value="USD" selected>USD ($)</option>
-                      <option value="EUR">EUR (&euro;)</option>
-                      <option value="GBP">GBP (&pound;)</option>
-                      <option value="INR">INR (&#8377;)</option>
-                      <option value="JPY">JPY (&yen;)</option>
-                      <option value="AUD">AUD ($)</option>
-                      <option value="CAD">CAD ($)</option>
-                    </select>
-                  </div>
-                  <span class="segment-sub">Total trip budget</span>
-                </div>
-              </div>
-              
-              <!-- Bottom Row: Preferences (Pacing, Themes, Vision) -->
-              <div class="preferences-console">
-                <div class="pref-left">
-                  <div class="pref-group">
-                    <label>TRIP PACING</label>
-                    <div class="pacing-selector" id="pacing-selector">
-                      <button type="button" class="pace-btn" data-pace="Relaxed"><i class="fa-solid fa-mug-hot"></i> Relaxed</button>
-                      <button type="button" class="pace-btn active" data-pace="Balanced"><i class="fa-solid fa-scale-balanced"></i> Balanced</button>
-                      <button type="button" class="pace-btn" data-pace="Fast-Paced"><i class="fa-solid fa-bolt"></i> Fast-Paced</button>
-                    </div>
-                  </div>
-                  
-                  <div class="pref-group">
-                    <label>QUICK THEMES</label>
-                    <div class="theme-tags" id="quick-themes">
-                      <button type="button" class="theme-tag" data-theme="Food & Dining">🍜 Food &amp; Dining</button>
-                      <button type="button" class="theme-tag" data-theme="History & Culture">🏛️ History</button>
-                      <button type="button" class="theme-tag" data-theme="Yoga & Wellness">🧘 Wellness</button>
-                      <button type="button" class="theme-tag" data-theme="Adventure">🏔️ Adventure</button>
-                      <button type="button" class="theme-tag" data-theme="Nature">🌅 Nature</button>
-                      <button type="button" class="theme-tag" data-theme="Shopping">🛍️ Shopping</button>
-                    </div>
-                  </div>
-                  
-                  <div class="pref-group" style="display:none;">
-                    <div class="chips" id="interest-chips"></div>
-                    <input type="text" id="interest-input" hidden />
-                  </div>
-                </div>
-                
-                <div class="pref-right">
-                  <div class="pref-group">
-                    <label for="custom_notes">TRIP VISION &amp; SPECIAL REQUESTS</label>
-                    <textarea id="custom_notes" name="custom_notes" rows="3" placeholder="Tell us your vibe &mdash; e.g. romantic riverfront views, slow mornings, vegetarian..." class="vision-textarea"></textarea>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- CTA -->
-              <div class="form-cta">
-                <button type="submit" class="btn btn-primary btn-giant" id="submit-btn">
-                   BUILD MY DETAILED ITINERARY
-                </button>
-                <div class="cta-badges">
-                  <span><i class="fa-solid fa-plane"></i> Live Flights &amp; Hotels</span>
-                  <span><i class="fa-solid fa-map-location-dot"></i> Smart Clustered Days</span>
-                  <span><i class="fa-solid fa-cloud-sun"></i> Live Weather Forecast</span>
-                  <span><i class="fa-solid fa-microchip"></i> Model Context Protocol (MCP)</span>
-                </div>
-              </div>
-              <p class="form-error" id="form-error" role="alert" hidden></p>
-            </form>
-          </div>
-
-          <!-- Quick Vibe Inspiration Pills (TripAdvisor style) -->
-          <div class="quick-vibe-bar">
-            <span class="vibe-label"><i class="fa-solid fa-compass"></i> Popular Ideas:</span>
-            <button type="button" class="vibe-quick-pill" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Slow mornings, matcha tea houses, and quiet temple walks"><i class="fa-solid fa-bowl-rice"></i> Kyoto Food &amp; Temples</button>
-            <button type="button" class="vibe-quick-pill" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Scenic river bluffs, Ganga Aarti, and Himalayan meditation"><i class="fa-solid fa-spa"></i> Rishikesh Retreat</button>
-            <button type="button" class="vibe-quick-pill" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="History & Culture" data-vision="Alfama miradouros, tram rides, and pastel de nata bakeries"><i class="fa-solid fa-landmark"></i> Lisbon Tram Trails</button>
-          </div>
+      <!-- Redesigned Luxury Search Card (Image 2 Redesign) -->
+      <div class="form-card-wide" id="form-card">
+        <!-- Mode Tabs -->
+        <div class="form-mode-tabs">
+          <button type="button" class="mode-tab active" data-mode="studio"><i class="fa-solid fa-compass"></i> Full Itinerary Studio</button>
+          <button type="button" class="mode-tab" data-mode="weekend"><i class="fa-solid fa-mug-hot"></i> Weekend Escape</button>
+          <button type="button" class="mode-tab" data-mode="romantic"><i class="fa-solid fa-heart"></i> Romantic Honeymoon</button>
+          <button type="button" class="mode-tab" data-mode="wellness"><i class="fa-solid fa-spa"></i> Yoga &amp; Wellness</button>
         </div>
 
-        <!-- Right Side: Trending Escapes & Live Inspiration -->
-        <aside class="hero-trending-pane">
-          <div class="trending-pane-head">
-            <div class="trending-badge"><i class="fa-solid fa-fire"></i> Top Escapes This Season</div>
-            <p>Click any card to auto-populate the planner</p>
-          </div>
+        <form id="plan-form" action="#" onsubmit="return false;" novalidate>
+          <input type="hidden" id="flight_destination" name="flight_destination" value="" />
+          <input type="hidden" id="include_flights" name="include_flights" value="" />
+          <input type="hidden" id="include_hotels" name="include_hotels" value="on" />
 
-          <div class="trending-cards-stack">
-            <!-- Card 1: Kyoto -->
-            <article class="trending-escape-card" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="History & Culture" data-vision="Romantic temple walks, Higashiyama lantern paths, and kaiseki dinners">
-              <div class="escape-img-wrap">
-                <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=500&auto=format&fit=crop&q=80" alt="Kyoto, Japan" loading="lazy" />
-                <span class="escape-chip">4 Nights &bull; 5 Days</span>
-                <span class="escape-rating"><i class="fa-solid fa-star"></i> 4.9</span>
+          <!-- Top Row: Modern Interactive Pods -->
+          <div class="search-console-grid">
+            <!-- FROM POD -->
+            <div class="console-segment pod-origin">
+              <div class="pod-header">
+                <span class="pod-icon"><i class="fa-solid fa-plane-departure"></i></span>
+                <label for="origin">FROM / ORIGIN</label>
               </div>
-              <div class="escape-card-body">
-                <div class="escape-title-row">
-                  <h4>Kyoto Cultural Odyssey</h4>
-                  <span class="escape-price">$2,500</span>
-                </div>
-                <p class="escape-sub">Higashiyama shrines, Gion tea alleys, and bamboo paths.</p>
-                <div class="escape-action-row">
-                  <span class="escape-tag">Historic Hub</span>
-                  <span class="btn-quick-fill">Quick Fill <i class="fa-solid fa-arrow-right"></i></span>
-                </div>
+              <div class="input-wrap no-border">
+                <input type="text" id="origin" name="origin" placeholder="e.g. Delhi, India" class="big-input" />
               </div>
-            </article>
-
-            <!-- Card 2: Rishikesh -->
-            <article class="trending-escape-card" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Himalayan foothills, evening Ganga Aarti, quiet yoga sessions and river meditation">
-              <div class="escape-img-wrap">
-                <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=500&auto=format&fit=crop&q=80" alt="Rishikesh, India" loading="lazy" />
-                <span class="escape-chip">5 Nights &bull; 6 Days</span>
-                <span class="escape-rating"><i class="fa-solid fa-star"></i> 5.0</span>
-              </div>
-              <div class="escape-card-body">
-                <div class="escape-title-row">
-                  <h4>Rishikesh River Corridor</h4>
-                  <span class="escape-price">&#8377;45,000</span>
-                </div>
-                <p class="escape-sub">Delhi train corridor to Parmarth Niketan &amp; Tapovan bluffs.</p>
-                <div class="escape-action-row">
-                  <span class="escape-tag">Yoga Corridor</span>
-                  <span class="btn-quick-fill">Quick Fill <i class="fa-solid fa-arrow-right"></i></span>
-                </div>
-              </div>
-            </article>
-
-            <!-- Card 3: Lisbon -->
-            <article class="trending-escape-card" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Alfama viewpoints, Tram 28 hills, Belém maritime promenade, and tavern dinners">
-              <div class="escape-img-wrap">
-                <img src="https://images.unsplash.com/photo-1513326738677-b964603b136d?w=500&auto=format&fit=crop&q=80" alt="Lisbon, Portugal" loading="lazy" />
-                <span class="escape-chip">4 Nights &bull; 5 Days</span>
-                <span class="escape-rating"><i class="fa-solid fa-star"></i> 4.9</span>
-              </div>
-              <div class="escape-card-body">
-                <div class="escape-title-row">
-                  <h4>Lisbon Coastal &amp; Alfama</h4>
-                  <span class="escape-price">&euro;1,800</span>
-                </div>
-                <p class="escape-sub">Historic Cal&ccedil;ada streets, Past&eacute;is de Bel&eacute;m, and Fado music.</p>
-                <div class="escape-action-row">
-                  <span class="escape-tag">Coastal Vibe</span>
-                  <span class="btn-quick-fill">Quick Fill <i class="fa-solid fa-arrow-right"></i></span>
-                </div>
-              </div>
-            </article>
-          </div>
-
-          <!-- Community Spotlight Link -->
-          <a href="community.html" class="trending-community-banner">
-            <div class="t-comm-icon"><i class="fa-solid fa-users"></i></div>
-            <div class="t-comm-copy">
-              <strong>Explore Community Journeys</strong>
-              <span>Read real reviews, drop tips &amp; AI-remix itineraries</span>
+              <span class="segment-sub">Airport or transit hub</span>
             </div>
-            <i class="fa-solid fa-chevron-right t-comm-arrow"></i>
-          </a>
-        </aside>
+            
+            <!-- TO POD -->
+            <div class="console-segment bordered-left pod-destination">
+              <div class="pod-header">
+                <span class="pod-icon"><i class="fa-solid fa-location-dot"></i></span>
+                <label for="destination">TO / DESTINATION</label>
+              </div>
+              <div class="input-wrap no-border">
+                <input type="text" id="destination" name="destination" placeholder="e.g. Rishikesh, India" required minlength="2" class="big-input" />
+              </div>
+              <span class="segment-sub">City, country or region</span>
+            </div>
+            
+            <!-- DATES POD -->
+            <div class="console-segment bordered-left segment-dates pod-dates">
+              <div class="pod-header">
+                <span class="pod-icon"><i class="fa-solid fa-calendar-days"></i></span>
+                <label>DATES (DEPARTURE &rarr; RETURN)</label>
+              </div>
+              <div class="dates-flex">
+                <div class="date-field-wrap">
+                  <span class="date-label">Depart</span>
+                  <input type="date" id="start_date" name="start_date" required class="date-input" />
+                </div>
+                <span class="date-separator">&rarr;</span>
+                <div class="date-field-wrap">
+                  <span class="date-label">Return</span>
+                  <input type="date" id="end_date" name="end_date" required class="date-input" />
+                </div>
+              </div>
+              <div class="date-badge-row">
+                <span class="night-counter" id="night-counter">4 Nights &middot; 5 Days</span>
+              </div>
+            </div>
+            
+            <!-- TRAVELERS & BUDGET POD -->
+            <div class="console-segment bordered-left pod-budget">
+              <div class="pod-header">
+                <span class="pod-icon"><i class="fa-solid fa-wallet"></i></span>
+                <label>TRAVELERS &amp; BUDGET</label>
+              </div>
+              <div class="traveler-budget-row">
+                <div class="tb-stepper" title="Number of travelers">
+                  <i class="fa-solid fa-user-group"></i>
+                  <input type="number" id="travelers" name="travelers" value="2" min="1" max="20" required class="tb-num-input" />
+                </div>
+                <div class="budget-input-group">
+                  <span class="currency-symbol">$</span>
+                  <input type="number" id="budget" name="budget" placeholder="2500" min="1" step="50" required class="budget-num-input" />
+                  <select id="currency" name="currency" class="currency-dropdown" required>
+                    <option value="USD" selected>USD ($)</option>
+                    <option value="EUR">EUR (&euro;)</option>
+                    <option value="GBP">GBP (&pound;)</option>
+                    <option value="INR">INR (&#8377;)</option>
+                    <option value="JPY">JPY (&yen;)</option>
+                    <option value="AUD">AUD ($)</option>
+                    <option value="CAD">CAD ($)</option>
+                  </select>
+                </div>
+              </div>
+              <span class="segment-sub">Total trip budget</span>
+            </div>
+          </div>
+          
+          <!-- Bottom Row: Preferences (Pacing, Themes, Vision) -->
+          <div class="preferences-console">
+            <div class="pref-left">
+              <div class="pref-group">
+                <label><i class="fa-solid fa-gauge-high"></i> TRIP PACING</label>
+                <div class="pacing-selector" id="pacing-selector">
+                  <button type="button" class="pace-btn" data-pace="Relaxed"><i class="fa-solid fa-mug-hot"></i> Relaxed <span>(Slow mornings)</span></button>
+                  <button type="button" class="pace-btn active" data-pace="Balanced"><i class="fa-solid fa-scale-balanced"></i> Balanced <span>(Curated mix)</span></button>
+                  <button type="button" class="pace-btn" data-pace="Fast-Paced"><i class="fa-solid fa-bolt"></i> Fast-Paced <span>(Max sights)</span></button>
+                </div>
+              </div>
+              
+              <div class="pref-group">
+                <label><i class="fa-solid fa-tags"></i> TRAVEL THEMES &amp; HIGHLIGHTS</label>
+                <div class="theme-tags" id="quick-themes">
+                  <button type="button" class="theme-tag" data-theme="Food & Dining">🍜 Food &amp; Dining</button>
+                  <button type="button" class="theme-tag" data-theme="History & Culture">🏛️ History &amp; Culture</button>
+                  <button type="button" class="theme-tag" data-theme="Yoga & Wellness">🧘 Wellness &amp; Yoga</button>
+                  <button type="button" class="theme-tag" data-theme="Adventure">🏔️ Outdoor Adventure</button>
+                  <button type="button" class="theme-tag" data-theme="Nature">🌅 Scenic Nature</button>
+                  <button type="button" class="theme-tag" data-theme="Shopping">🛍️ Local Markets</button>
+                </div>
+              </div>
+              
+              <div class="pref-group" style="display:none;">
+                <div class="chips" id="interest-chips"></div>
+                <input type="text" id="interest-input" hidden />
+              </div>
+            </div>
+            
+            <div class="pref-right">
+              <div class="pref-group vision-card-group">
+                <div class="vision-header-row">
+                  <label for="custom_notes"><i class="fa-solid fa-wand-magic-sparkles"></i> TRIP VISION &amp; SPECIAL REQUESTS</label>
+                  <span class="vision-badge"><i class="fa-solid fa-sparkles"></i> AI Tailored</span>
+                </div>
+                <div class="vision-box-wrap">
+                  <textarea id="custom_notes" name="custom_notes" class="vision-textarea" rows="3" placeholder="Tell us your ideal vibe — e.g. romantic riverfront views, slow mornings, elderly-accessible with no stairs, vegetarian dining only..."></textarea>
+                  <div class="vision-quick-prompts">
+                    <span class="prompt-hint">Quick add:</span>
+                    <button type="button" class="vision-chip" data-prompt="Slow relaxed mornings &amp; sunset dining">🌅 Slow mornings</button>
+                    <button type="button" class="vision-chip" data-prompt="100% vegetarian / vegan dining only">🥗 Vegetarian</button>
+                    <button type="button" class="vision-chip" data-prompt="Elderly-friendly with minimal walking stairs">♿ Minimal stairs</button>
+                    <button type="button" class="vision-chip" data-prompt="Hidden gem cafes &amp; quiet temple gardens">💎 Hidden gems</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- CTA Action Row -->
+          <div class="form-cta-bar">
+            <button type="submit" class="btn-hero-submit" id="submit-btn">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> BUILD MY DETAILED ITINERARY
+            </button>
+            <div class="cta-trust-badges">
+              <span><i class="fa-solid fa-plane"></i> Live Google Flights &amp; Hotels</span>
+              <span><i class="fa-solid fa-map-location-dot"></i> Neighborhood-First Clustering</span>
+              <span><i class="fa-solid fa-cloud-sun"></i> 16-Day Weather Adaptation</span>
+              <span><i class="fa-solid fa-microchip"></i> Model Context Protocol (MCP)</span>
+            </div>
+          </div>
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+        </form>
+      </div>
+
+      <!-- Quick Ideas Bar -->
+      <div class="quick-vibe-bar">
+        <span class="vibe-label"><i class="fa-solid fa-compass"></i> Popular Ideas:</span>
+        <button type="button" class="vibe-quick-pill" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Slow mornings, matcha tea houses, Higashiyama lantern paths, and kaiseki dining"><i class="fa-solid fa-bowl-rice"></i> Kyoto Food &amp; Temples</button>
+        <button type="button" class="vibe-quick-pill" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Himalayan foothills, evening Ganga Aarti, quiet yoga sessions and river meditation"><i class="fa-solid fa-spa"></i> Rishikesh Retreat</button>
+        <button type="button" class="vibe-quick-pill" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="History & Culture" data-vision="Alfama viewpoints, Tram 28 hills, Belém maritime promenade, and tavern dinners"><i class="fa-solid fa-landmark"></i> Lisbon Tram Trails</button>
+        <button type="button" class="vibe-quick-pill" data-dest="Amalfi Coast, Italy" data-origin="Rome, Italy" data-budget="3200" data-curr="EUR" data-pacing="Relaxed" data-theme="Food & Dining" data-vision="Positano cliffside pastel villas, Mediterranean boat ferries, fresh limoncello, and scenic coastal dining"><i class="fa-solid fa-water"></i> Amalfi Romance</button>
       </div>
     </section>
 
@@ -271,11 +228,11 @@
           <div class="locations-marquee-track">
             <!-- 1. Kyoto -->
             <article class="marquee-loc-card" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="History & Culture" data-vision="Slow mornings, matcha tea houses, Higashiyama lantern paths, and kaiseki dining">
-              <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&q=85&w=800" alt="Kyoto, Japan" loading="lazy" />
+              <img src="images/destinations/kyoto.jpg" alt="Kyoto, Japan" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇯🇵 Japan</span>
+                <span class="loc-country">Japan</span>
                 <h4 class="loc-title">Kyoto Ancient Temples</h4>
                 <p class="loc-meta">4 Nights &bull; $2,500 &bull; Historic Gion</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -284,11 +241,11 @@
 
             <!-- 2. Rishikesh -->
             <article class="marquee-loc-card" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Himalayan foothills, evening Ganga Aarti, quiet yoga sessions and river meditation">
-              <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&q=85&w=800" alt="Rishikesh, India" loading="lazy" />
+              <img src="images/destinations/rishikesh.jpg" alt="Rishikesh, India" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 5.0</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇮🇳 India</span>
+                <span class="loc-country">India</span>
                 <h4 class="loc-title">Rishikesh Sacred River</h4>
                 <p class="loc-meta">5 Nights &bull; &#8377;45k &bull; Yoga Corridor</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -297,11 +254,11 @@
 
             <!-- 3. Amalfi Coast -->
             <article class="marquee-loc-card" data-dest="Amalfi Coast, Italy" data-origin="Rome, Italy" data-budget="3200" data-curr="EUR" data-pacing="Relaxed" data-theme="Food & Dining" data-vision="Positano cliffside pastel villas, Mediterranean boat ferries, fresh limoncello, and scenic coastal dining">
-              <img src="https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&q=85&w=800" alt="Amalfi Coast, Italy" loading="lazy" />
+              <img src="images/destinations/amalfi.jpg" alt="Amalfi Coast, Italy" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇮🇹 Italy</span>
+                <span class="loc-country">Italy</span>
                 <h4 class="loc-title">Amalfi &amp; Positano</h4>
                 <p class="loc-meta">5 Nights &bull; &euro;3,200 &bull; Cliffside Coast</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -310,11 +267,11 @@
 
             <!-- 4. Zermatt -->
             <article class="marquee-loc-card" data-dest="Zermatt, Switzerland" data-origin="Zurich, Switzerland" data-budget="2900" data-curr="USD" data-pacing="Balanced" data-theme="Adventure" data-vision="Matterhorn alpine views, glacier paradise cable cars, scenic cogwheel trains, and cozy raclette chalets">
-              <img src="https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&q=85&w=800" alt="Zermatt, Switzerland" loading="lazy" />
+              <img src="images/destinations/zermatt.jpg" alt="Zermatt, Switzerland" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 5.0</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇨🇭 Switzerland</span>
+                <span class="loc-country">Switzerland</span>
                 <h4 class="loc-title">Swiss Alps &amp; Zermatt</h4>
                 <p class="loc-meta">4 Nights &bull; $2,900 &bull; Glacier Trails</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -323,11 +280,11 @@
 
             <!-- 5. Lisbon -->
             <article class="marquee-loc-card" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="History & Culture" data-vision="Alfama viewpoints, Tram 28 hills, Belém maritime promenade, and tavern dinners">
-              <img src="https://images.unsplash.com/photo-1513326738677-b964603b136d?auto=format&fit=crop&q=85&w=800" alt="Lisbon, Portugal" loading="lazy" />
+              <img src="images/destinations/lisbon.jpg" alt="Lisbon, Portugal" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇵🇹 Portugal</span>
+                <span class="loc-country">Portugal</span>
                 <h4 class="loc-title">Lisbon Miradouros</h4>
                 <p class="loc-meta">4 Nights &bull; &euro;1,800 &bull; Alfama &amp; Bel&eacute;m</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -336,11 +293,11 @@
 
             <!-- 6. Paris -->
             <article class="marquee-loc-card" data-dest="Paris, France" data-origin="London, UK" data-budget="2200" data-curr="EUR" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Montmartre art alleys, Seine twilight strolls, Latin Quarter cafes, and classic French bakeries">
-              <img src="https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=85&w=800" alt="Paris, France" loading="lazy" />
+              <img src="images/destinations/paris.jpg" alt="Paris, France" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.8</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.8</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇫🇷 France</span>
+                <span class="loc-country">France</span>
                 <h4 class="loc-title">Parisian Arts &amp; Cafes</h4>
                 <p class="loc-meta">5 Nights &bull; &euro;2,200 &bull; Montmartre</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -349,11 +306,11 @@
 
             <!-- 7. Santorini -->
             <article class="marquee-loc-card" data-dest="Santorini, Greece" data-origin="Athens, Greece" data-budget="2600" data-curr="EUR" data-pacing="Relaxed" data-theme="Nature" data-vision="Oia cliffside blue domes, caldera sunset sailing, Aegean seafood, and volcanic beaches">
-              <img src="https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?auto=format&fit=crop&q=85&w=800" alt="Santorini, Greece" loading="lazy" />
+              <img src="images/destinations/santorini.jpg" alt="Santorini, Greece" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇬🇷 Greece</span>
+                <span class="loc-country">Greece</span>
                 <h4 class="loc-title">Santorini Blue Caldera</h4>
                 <p class="loc-meta">4 Nights &bull; &euro;2,600 &bull; Oia Sunsets</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -362,11 +319,11 @@
 
             <!-- 8. Bali -->
             <article class="marquee-loc-card" data-dest="Bali, Indonesia" data-origin="Singapore" data-budget="1800" data-curr="USD" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Ubud emerald rice terraces, sacred monkey forest, sunset beach temples, and traditional spa wellness">
-              <img src="https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&q=85&w=800" alt="Bali, Indonesia" loading="lazy" />
+              <img src="images/destinations/bali.jpg" alt="Bali, Indonesia" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇮🇩 Indonesia</span>
+                <span class="loc-country">Indonesia</span>
                 <h4 class="loc-title">Ubud Rice Terraces</h4>
                 <p class="loc-meta">6 Nights &bull; $1,800 &bull; Jungle Spa</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -378,11 +335,11 @@
           <div class="locations-marquee-track" aria-hidden="true">
             <!-- 1. Kyoto -->
             <article class="marquee-loc-card" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="History & Culture" data-vision="Slow mornings, matcha tea houses, Higashiyama lantern paths, and kaiseki dining">
-              <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&q=85&w=800" alt="Kyoto, Japan" loading="lazy" />
+              <img src="images/destinations/kyoto.jpg" alt="Kyoto, Japan" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇯🇵 Japan</span>
+                <span class="loc-country">Japan</span>
                 <h4 class="loc-title">Kyoto Ancient Temples</h4>
                 <p class="loc-meta">4 Nights &bull; $2,500 &bull; Historic Gion</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -391,11 +348,11 @@
 
             <!-- 2. Rishikesh -->
             <article class="marquee-loc-card" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Himalayan foothills, evening Ganga Aarti, quiet yoga sessions and river meditation">
-              <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&q=85&w=800" alt="Rishikesh, India" loading="lazy" />
+              <img src="images/destinations/rishikesh.jpg" alt="Rishikesh, India" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 5.0</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇮🇳 India</span>
+                <span class="loc-country">India</span>
                 <h4 class="loc-title">Rishikesh Sacred River</h4>
                 <p class="loc-meta">5 Nights &bull; &#8377;45k &bull; Yoga Corridor</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -404,11 +361,11 @@
 
             <!-- 3. Amalfi Coast -->
             <article class="marquee-loc-card" data-dest="Amalfi Coast, Italy" data-origin="Rome, Italy" data-budget="3200" data-curr="EUR" data-pacing="Relaxed" data-theme="Food & Dining" data-vision="Positano cliffside pastel villas, Mediterranean boat ferries, fresh limoncello, and scenic coastal dining">
-              <img src="https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&q=85&w=800" alt="Amalfi Coast, Italy" loading="lazy" />
+              <img src="images/destinations/amalfi.jpg" alt="Amalfi Coast, Italy" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇮🇹 Italy</span>
+                <span class="loc-country">Italy</span>
                 <h4 class="loc-title">Amalfi &amp; Positano</h4>
                 <p class="loc-meta">5 Nights &bull; &euro;3,200 &bull; Cliffside Coast</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -417,11 +374,11 @@
 
             <!-- 4. Zermatt -->
             <article class="marquee-loc-card" data-dest="Zermatt, Switzerland" data-origin="Zurich, Switzerland" data-budget="2900" data-curr="USD" data-pacing="Balanced" data-theme="Adventure" data-vision="Matterhorn alpine views, glacier paradise cable cars, scenic cogwheel trains, and cozy raclette chalets">
-              <img src="https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&q=85&w=800" alt="Zermatt, Switzerland" loading="lazy" />
+              <img src="images/destinations/zermatt.jpg" alt="Zermatt, Switzerland" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 5.0</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇨🇭 Switzerland</span>
+                <span class="loc-country">Switzerland</span>
                 <h4 class="loc-title">Swiss Alps &amp; Zermatt</h4>
                 <p class="loc-meta">4 Nights &bull; $2,900 &bull; Glacier Trails</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -430,11 +387,11 @@
 
             <!-- 5. Lisbon -->
             <article class="marquee-loc-card" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="History & Culture" data-vision="Alfama viewpoints, Tram 28 hills, Belém maritime promenade, and tavern dinners">
-              <img src="https://images.unsplash.com/photo-1513326738677-b964603b136d?auto=format&fit=crop&q=85&w=800" alt="Lisbon, Portugal" loading="lazy" />
+              <img src="images/destinations/lisbon.jpg" alt="Lisbon, Portugal" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇵🇹 Portugal</span>
+                <span class="loc-country">Portugal</span>
                 <h4 class="loc-title">Lisbon Miradouros</h4>
                 <p class="loc-meta">4 Nights &bull; &euro;1,800 &bull; Alfama &amp; Bel&eacute;m</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -443,11 +400,11 @@
 
             <!-- 6. Paris -->
             <article class="marquee-loc-card" data-dest="Paris, France" data-origin="London, UK" data-budget="2200" data-curr="EUR" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Montmartre art alleys, Seine twilight strolls, Latin Quarter cafes, and classic French bakeries">
-              <img src="https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=85&w=800" alt="Paris, France" loading="lazy" />
+              <img src="images/destinations/paris.jpg" alt="Paris, France" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.8</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.8</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇫🇷 France</span>
+                <span class="loc-country">France</span>
                 <h4 class="loc-title">Parisian Arts &amp; Cafes</h4>
                 <p class="loc-meta">5 Nights &bull; &euro;2,200 &bull; Montmartre</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -456,11 +413,11 @@
 
             <!-- 7. Santorini -->
             <article class="marquee-loc-card" data-dest="Santorini, Greece" data-origin="Athens, Greece" data-budget="2600" data-curr="EUR" data-pacing="Relaxed" data-theme="Nature" data-vision="Oia cliffside blue domes, caldera sunset sailing, Aegean seafood, and volcanic beaches">
-              <img src="https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?auto=format&fit=crop&q=85&w=800" alt="Santorini, Greece" loading="lazy" />
+              <img src="images/destinations/santorini.jpg" alt="Santorini, Greece" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇬🇷 Greece</span>
+                <span class="loc-country">Greece</span>
                 <h4 class="loc-title">Santorini Blue Caldera</h4>
                 <p class="loc-meta">4 Nights &bull; &euro;2,600 &bull; Oia Sunsets</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -469,11 +426,11 @@
 
             <!-- 8. Bali -->
             <article class="marquee-loc-card" data-dest="Bali, Indonesia" data-origin="Singapore" data-budget="1800" data-curr="USD" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Ubud emerald rice terraces, sacred monkey forest, sunset beach temples, and traditional spa wellness">
-              <img src="https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&q=85&w=800" alt="Bali, Indonesia" loading="lazy" />
+              <img src="images/destinations/bali.jpg" alt="Bali, Indonesia" loading="lazy" />
               <div class="loc-card-scrim"></div>
-              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-badge"><span class="star-icon">★</span> 4.9</div>
               <div class="loc-card-info">
-                <span class="loc-country">🇮🇩 Indonesia</span>
+                <span class="loc-country">Indonesia</span>
                 <h4 class="loc-title">Ubud Rice Terraces</h4>
                 <p class="loc-meta">6 Nights &bull; $1,800 &bull; Jungle Spa</p>
                 <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
@@ -619,33 +576,77 @@
       </div>
     </section>
 
-    <!-- ─── Agents ─────────────────────────────────────────────── -->
+    <!-- ─── Interactive Multi-Agent Bento Grid (21st.dev Style) ──── -->
     <section class="agents" id="agents">
-      <h2 class="section-title">Meet the agents</h2>
-      <div class="agent-grid">
-        <article class="agent-card">
-          <div class="agent-icon research"><i class="fa-solid fa-magnifying-glass"></i></div>
-          <h3>Research Agent</h3>
-          <p>Pulls LLM-ready context from the web, folds in live weather so rainy days become indoor days, and invokes MCP safety bulletins.</p>
-          <ul><li><i class="fa-solid fa-globe"></i> web_search</li><li><i class="fa-solid fa-cloud-sun"></i> get_weather</li><li><i class="fa-solid fa-shield-halved"></i> MCP travel_safety</li></ul>
+      <div class="bento-header-wrap">
+        <span class="bento-kicker"><i class="fa-solid fa-network-wired"></i> LangGraph 0.2+ Architecture</span>
+        <h2 class="section-title">Autonomous Agents Working in Concert</h2>
+        <p class="section-sub">Instead of brittle prompts, five specialized agents coordinate state, verify constraints, and pause for your approval.</p>
+      </div>
+
+      <div class="bento-grid-container">
+        <!-- Bento 1: Research Agent (Wide) -->
+        <article class="bento-card bento-wide">
+          <div class="bento-glow"></div>
+          <div class="bento-badge-row">
+            <span class="bento-pill-teal"><i class="fa-solid fa-magnifying-glass"></i> Node 1: Research Agent</span>
+            <span class="bento-latency-pill">~1.2s Parallel I/O</span>
+          </div>
+          <h3>Real-Time Live Web, Weather &amp; Hybrid RAG</h3>
+          <p>Gathers live context using Tavily, Open-Meteo forecasts, foreign exchange rates, and a 2,180+ passage ChromaDB vector store. Rainy forecasts automatically reshape the schedule to indoor cultural experiences.</p>
+          <div class="bento-tools-strip">
+            <span class="b-tool"><i class="fa-solid fa-globe"></i> web_search</span>
+            <span class="b-tool"><i class="fa-solid fa-cloud-sun"></i> get_weather</span>
+            <span class="b-tool"><i class="fa-solid fa-database"></i> hybrid_rag</span>
+            <span class="b-tool"><i class="fa-solid fa-money-bill-transfer"></i> get_exchange_rate</span>
+          </div>
         </article>
-        <article class="agent-card">
-          <div class="agent-icon plan"><i class="fa-solid fa-pen-ruler"></i></div>
-          <h3>Planner Agent</h3>
-          <p>Turns findings and budget into concrete days, complete with smart packing lists dynamically generated for your trip duration and interests.</p>
-          <ul><li><i class="fa-solid fa-coins"></i> allocate_budget</li><li><i class="fa-solid fa-calendar-day"></i> build_day_schedule</li><li><i class="fa-solid fa-suitcase"></i> generate_packing_list</li></ul>
+
+        <!-- Bento 2: Planner Agent -->
+        <article class="bento-card">
+          <div class="bento-glow"></div>
+          <div class="bento-badge-row">
+            <span class="bento-pill-blue"><i class="fa-solid fa-pen-ruler"></i> Node 2: Planner</span>
+          </div>
+          <h3>Deterministic Budget &amp; Spatial Clustered Days</h3>
+          <p>Splits budget across Lodging, Food, Activities, and Transit with pure mathematical functions. Clusters daily activities within 15–20 min transit radii to eliminate cross-city fatigue.</p>
+          <div class="bento-metric-box">
+            <div class="b-stat"><span>100%</span><small>Budget Transparency</small></div>
+            <div class="b-stat"><span>0</span><small>Hallucinated Math</small></div>
+          </div>
         </article>
-        <article class="agent-card">
-          <div class="agent-icon human"><i class="fa-solid fa-user-check"></i></div>
-          <h3>Human Gate</h3>
-          <p>A real pause in the graph (LangGraph interrupt) that resumes exactly where it stopped — with your decision.</p>
-          <ul><li><i class="fa-solid fa-thumbs-up"></i> approve</li><li><i class="fa-solid fa-pen"></i> modify</li><li><i class="fa-solid fa-thumbs-down"></i> reject</li></ul>
+
+        <!-- Bento 3: Human Gate (HITL) -->
+        <article class="bento-card">
+          <div class="bento-glow"></div>
+          <div class="bento-badge-row">
+            <span class="bento-pill-amber"><i class="fa-solid fa-user-check"></i> Node 3: Human Gate</span>
+            <span class="bento-tag-hitl">interrupt() Primitive</span>
+          </div>
+          <h3>Durable State Persistence Across the Pause</h3>
+          <p>Execution safely pauses inside the graph via <code>interrupt()</code>. Resumes seamlessly via <code>Command(resume={action, feedback})</code> with zero state loss, backed by SQLite checkpoints.</p>
+          <div class="bento-hitl-pills">
+            <span class="b-action-approve"><i class="fa-solid fa-check"></i> approve</span>
+            <span class="b-action-modify"><i class="fa-solid fa-pen"></i> modify</span>
+            <span class="b-action-reject"><i class="fa-solid fa-xmark"></i> reject</span>
+          </div>
         </article>
-        <article class="agent-card">
-          <div class="agent-icon finalize"><i class="fa-solid fa-map-location-dot"></i></div>
-          <h3>Finalize Agent</h3>
-          <p>Expands your approved draft into a rich itinerary, builds interactive route maps, and invokes MCP for visual PDF and calendar feeds.</p>
-          <ul><li><i class="fa-solid fa-route"></i> build_route_map</li><li><i class="fa-solid fa-file-pdf"></i> MCP generate_pdf</li><li><i class="fa-solid fa-calendar-plus"></i> MCP calendar_ics</li></ul>
+
+        <!-- Bento 4: Finalize & Route Map (Wide) -->
+        <article class="bento-card bento-wide">
+          <div class="bento-glow"></div>
+          <div class="bento-badge-row">
+            <span class="bento-pill-purple"><i class="fa-solid fa-map-location-dot"></i> Node 4: Finalize &amp; MCP</span>
+            <span class="bento-mcp-badge"><i class="fa-solid fa-microchip"></i> Model Context Protocol</span>
+          </div>
+          <h3>Interactive Routing, Wikipedia Photos &amp; MCP Export</h3>
+          <p>Geocodes every stop via Photon, routes driving/walking legs via OSRM/OpenRouteService, resolves high-confidence landmark imagery, and invokes the Travel Concierge MCP server for calendar and PDF dossiers.</p>
+          <div class="bento-tools-strip">
+            <span class="b-tool"><i class="fa-solid fa-route"></i> build_route_map</span>
+            <span class="b-tool"><i class="fa-solid fa-image"></i> wikipedia_images</span>
+            <span class="b-tool"><i class="fa-solid fa-file-pdf"></i> MCP generate_pdf</span>
+            <span class="b-tool"><i class="fa-solid fa-calendar-plus"></i> MCP calendar_ics</span>
+          </div>
         </article>
       </div>
     </section>

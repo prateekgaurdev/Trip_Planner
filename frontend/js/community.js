@@ -168,45 +168,62 @@
       }
 
       commGrid.innerHTML = trips.map((t) => {
+        const destLower = (t.destination || '').toLowerCase();
+        let coverImg = 'images/destinations/kyoto.jpg';
+        if (destLower.includes('rishikesh') || destLower.includes('india')) coverImg = 'images/destinations/rishikesh.jpg';
+        else if (destLower.includes('lisbon') || destLower.includes('portugal')) coverImg = 'images/destinations/lisbon.jpg';
+        else if (destLower.includes('amalfi') || destLower.includes('italy')) coverImg = 'images/destinations/amalfi.jpg';
+        else if (destLower.includes('paris') || destLower.includes('france')) coverImg = 'images/destinations/paris.jpg';
+        else if (destLower.includes('zermatt') || destLower.includes('swiss')) coverImg = 'images/destinations/zermatt.jpg';
+        else if (destLower.includes('santorini') || destLower.includes('greece')) coverImg = 'images/destinations/santorini.jpg';
+        else if (destLower.includes('bali')) coverImg = 'images/destinations/bali.jpg';
+
         const tagsHtml = (t.tags || []).map(tg => `<span class="comm-tag-badge">${esc(tg)}</span>`).join('');
         const authorAvatar = t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name)}&background=0d9488&color=fff`;
-        const ratingStars = '★'.repeat(Math.round(t.average_rating || 5));
+        const ratingNum = Number(t.average_rating || 5.0).toFixed(1);
         const likedClass = t.user_has_liked ? 'liked' : '';
         const corridorHtml = t.origin ? `<span class="comm-chip"><i class="fa-solid fa-plane-departure"></i> ${esc(t.origin)} &rarr;</span>` : '';
+        const tripUrl = `community-trip.html?id=${encodeURIComponent(t.id)}`;
 
         return `
-          <article class="comm-trip-card" data-trip-id="${esc(t.id)}">
-            <div class="comm-card-header">
-              <div class="comm-card-author-row">
-                <div class="comm-author-info">
-                  <img src="${esc(authorAvatar)}" alt="${esc(t.author_name)}" class="comm-author-img" />
-                  <span>${esc(t.author_name)}</span>
-                </div>
-                <span class="comm-dest-pill"><i class="fa-solid fa-location-dot"></i> ${esc(t.destination)}</span>
-              </div>
-              <h3 class="comm-card-title">${esc(t.title)}</h3>
-              <p class="comm-card-desc">${esc(t.description || 'Curated multi-day itinerary with neighborhood clustering.')}</p>
+          <article class="comm-trip-card" data-trip-id="${esc(t.id)}" style="cursor:pointer;">
+            <div class="comm-card-cover-wrap">
+              <img src="${coverImg}" alt="${esc(t.destination)}" class="comm-cover-img" loading="lazy" />
+              <div class="comm-cover-scrim"></div>
+              <span class="comm-card-rating-badge"><span class="star-icon">★</span> ${ratingNum}</span>
+              <span class="comm-dest-pill"><i class="fa-solid fa-location-dot"></i> ${esc(t.destination)}</span>
             </div>
+
             <div class="comm-card-body">
+              <div class="comm-author-row">
+                <img src="${esc(authorAvatar)}" alt="${esc(t.author_name)}" class="comm-author-img" />
+                <div class="comm-author-text">
+                  <span class="comm-author-name">${esc(t.author_name)}</span>
+                  <span class="comm-author-badge"><i class="fa-solid fa-circle-check"></i> Verified Explorer</span>
+                </div>
+              </div>
+
+              <h3 class="comm-card-title"><a href="${tripUrl}">${esc(t.title)}</a></h3>
+              <p class="comm-card-desc">${esc(t.description || 'Curated multi-day itinerary with neighborhood-first spatial clustering.')}</p>
+
               <div class="comm-card-meta-chips">
                 ${corridorHtml}
                 <span class="comm-chip"><i class="fa-solid fa-calendar-days"></i> ${t.duration_days} Days</span>
                 <span class="comm-chip"><i class="fa-solid fa-users"></i> ${t.travelers} Travelers</span>
                 ${t.budget ? `<span class="comm-chip"><i class="fa-solid fa-coins"></i> ${money(t.budget)} ${esc(t.currency)}</span>` : ''}
               </div>
+
               <div class="comm-tags-list">${tagsHtml}</div>
             </div>
+
             <div class="comm-card-footer">
               <div class="comm-stats-left">
-                <span class="comm-rating-badge" title="${t.average_rating} out of 5 stars">${ratingStars} <span>${t.average_rating.toFixed(1)}</span></span>
-                <span><i class="fa-solid fa-comments"></i> ${t.reviews_count}</span>
-              </div>
-              <div class="comm-actions-right">
                 <button type="button" class="comm-like-btn ${likedClass}" data-trip-id="${esc(t.id)}" title="Upvote this trip">
                   <i class="fa-solid fa-heart"></i> <span class="like-cnt">${t.likes_count}</span>
                 </button>
-                <button type="button" class="btn btn-primary btn-sm btn-open-comm-trip" data-trip-id="${esc(t.id)}">View &amp; Review</button>
+                <span class="comm-reviews-count"><i class="fa-solid fa-comments"></i> ${t.reviews_count} reviews</span>
               </div>
+              <a href="${tripUrl}" class="btn btn-primary btn-sm btn-view-fullpage">Explore Journey &rarr;</a>
             </div>
           </article>
         `;
@@ -216,6 +233,7 @@
       commGrid.querySelectorAll('.comm-like-btn').forEach((btn) => {
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
+          e.preventDefault();
           if (!WayfarerAPI.isLoggedIn()) {
             toast('Please sign in to upvote community itineraries!', 'warn');
             if (authModal) authModal.hidden = false;
@@ -233,9 +251,11 @@
         });
       });
 
-      commGrid.querySelectorAll('.btn-open-comm-trip').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          openCommunityTripModal(btn.dataset.tripId);
+      commGrid.querySelectorAll('.comm-trip-card').forEach((card) => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.comm-like-btn')) return;
+          const tripId = card.dataset.tripId;
+          window.location.href = `community-trip.html?id=${encodeURIComponent(tripId)}`;
         });
       });
     } catch (err) {
@@ -456,6 +476,34 @@
       remixBtn.innerHTML = `<i class="fa-solid fa-bolt"></i> Remix with Community Wisdom`;
     }
   });
+
+
+  // ─── API health pill ────────────────────────────────────
+  const els = {
+    apiStatus: document.getElementById('api-status'),
+    apiStatusText: document.getElementById('api-status-text')
+  };
+  let _apiCheckInterval = null;
+  
+  async function checkApi() {
+    if (!els.apiStatus) return;
+    const ok = await WayfarerAPI.ping();
+    els.apiStatus.classList.toggle('online', ok);
+    els.apiStatus.classList.toggle('offline', !ok);
+    els.apiStatusText.textContent = ok
+      ? `API connected${WayfarerAPI.base ? '' : ' (same origin)'}`
+      : 'API offline';
+      
+    if (ok && _apiCheckInterval) {
+      clearInterval(_apiCheckInterval);
+      _apiCheckInterval = null;
+    }
+  }
+
+  if (els.apiStatus) {
+    _apiCheckInterval = setInterval(checkApi, 3000);
+    checkApi();
+  }
 
   // Initialize on load
   updateAuthNav();

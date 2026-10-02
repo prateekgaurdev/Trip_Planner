@@ -23,6 +23,13 @@ const WayfarerAPI = (() => {
       localStorage.setItem('wayfarer_api', fromQuery);
       return fromQuery.replace(/\/$/, '');
     }
+    
+    // If we are already on the backend port, definitely use same origin
+    if (location.port === '8000' || location.port === '8080') {
+      localStorage.removeItem('wayfarer_api');
+      return '';
+    }
+    
     const stored = localStorage.getItem('wayfarer_api');
     if (stored) return stored.replace(/\/$/, '');
     
