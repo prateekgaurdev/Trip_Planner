@@ -19,13 +19,18 @@ PlanStatus = Literal[
 ReviewAction = Literal["approve", "reject", "modify"]
 
 
-class TripPreferences(TypedDict):
+class TripPreferences(TypedDict, total=False):
     destination: str
     start_date: str          # ISO yyyy-mm-dd
     end_date: str            # ISO yyyy-mm-dd
+    budget: float
     budget_usd: float
+    currency: str
     travelers: int
     interests: list[str]     # e.g. ["food", "museums", "hiking"]
+    origin: str
+    flight_destination: str
+    custom_notes: str        # Free-text trip vision & special requests
 
 
 class ReviewDecision(TypedDict, total=False):
@@ -67,8 +72,29 @@ class TripState(TypedDict, total=False):
     # Live flight/hotel search results surfaced at review time.
     travel_options: dict[str, Any]
 
+    # Persistent Lodging Anchor (solves the 'Stay at Hotel A Again' flaw).
+    # Established during research/planning or selected in HITL review.
+    lodging_anchor: dict[str, Any]
+
+    # Free-text traveler trip vision, style, and special requests.
+    custom_notes: str
+
+    # End-to-end Inter-City Journey Corridor (From Origin to Destination).
+    journey_corridor: dict[str, Any]
+
+    # RAG (Retrieval-Augmented Generation) intelligence & citations.
+    rag_context: list[dict[str, Any]]
+    rag_sources: list[str]
+    neighborhood_clusters: list[dict[str, Any]]
+
+    # MCP (Model Context Protocol) intelligence & exports.
+    travel_advisories: dict[str, Any]
+    calendar_ics: str
+    mcp_tools_used: list[str]
+
     # Internal research/finalize pipeline buffers.
     _research_raw: dict[str, Any]
+    _corridor_raw: dict[str, Any]
     _expanded_days: list[dict[str, Any]]
     _travel_options: dict[str, Any]
     _route_map: dict[str, Any]

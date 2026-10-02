@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=3" />
 </head>
 <body>
   <!-- ─── Top navigation ───────────────────────────────────────── -->
@@ -23,8 +23,13 @@
       <span class="brand-name">Wayfarer</span>
     </a>
     <nav class="site-nav" aria-label="Primary">
-      <a href="#how">How it works</a>
-      <a href="#agents">Agents</a>
+      <a href="index.html" class="nav-link active"><i class="fa-solid fa-compass"></i> AI Planner</a>
+      <a href="community.html" class="nav-link"><i class="fa-solid fa-users"></i> Community Hub</a>
+      <a href="#how" class="nav-link">How it works</a>
+      <a href="#agents" class="nav-link">Agents</a>
+      <div id="auth-nav-pill" class="auth-nav-pill">
+        <button type="button" class="btn btn-auth-pill" id="open-auth-btn"><i class="fa-solid fa-user"></i> <span>Sign In</span></button>
+      </div>
       <span class="api-pill" id="api-status" title="Backend connection">
         <span class="dot"></span><span id="api-status-text">Checking API…</span>
       </span>
@@ -32,116 +37,483 @@
   </header>
 
   <main id="top">
-    <!-- ─── Hero / Form ────────────────────────────────────────── -->
-    <section class="hero" id="planner">
-      <div class="hero-copy">
-        <p class="eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Multi-agent · Human-in-the-loop</p>
-        <h1>Plan a trip worth taking.</h1>
-        <p class="hero-sub">
-          Our agents research your destination, draft a day-by-day itinerary with a
-          budget breakdown, then <strong>pause for your approval</strong>. Approve,
-          reject, or refine — you stay in control.
-        </p>
-        <ul class="hero-points">
-          <li><i class="fa-solid fa-circle-check"></i> Live research &amp; weather-aware days</li>
-          <li><i class="fa-solid fa-circle-check"></i> Transparent budget allocation</li>
-          <li><i class="fa-solid fa-circle-check"></i> Review gate before anything is final</li>
-          <li><i class="fa-solid fa-circle-check"></i> Interactive route maps with distance &amp; time estimates</li>
-        </ul>
+    <!-- ─── Hero / Form (Fuller Wide 2-Column Layout) ────────────── -->
+    <section class="hero-wide" id="planner">
+      <div class="hero-fuller-grid">
+        <!-- Main / Left Column: Console & Trip Specs -->
+        <div class="hero-main-pane">
+          <div class="hero-kicker-pill"><i class="fa-solid fa-sparkles"></i> AI-Powered Travel Intelligence &bull; LangGraph 0.2+</div>
+          <h1 class="hero-main-title">Where would you like your agents to take you?</h1>
+          <p class="hero-sub">Multi-agent intelligence builds, clusters, prices, and maps your dream journey.</p>
+
+          <div class="form-card-wide" id="form-card">
+            <form id="plan-form" action="#" onsubmit="return false;" novalidate>
+              <input type="hidden" id="flight_destination" name="flight_destination" value="" />
+              <input type="hidden" id="include_flights" name="include_flights" value="" />
+              <input type="hidden" id="include_hotels" name="include_hotels" value="on" />
+
+              <!-- Top Row: Segmented Search Console -->
+              <div class="search-console-grid">
+                <!-- FROM -->
+                <div class="console-segment">
+                  <label for="origin">FROM</label>
+                  <div class="input-wrap no-border">
+                    <input type="text" id="origin" name="origin" placeholder="Delhi, India" class="big-input" />
+                  </div>
+                  <span class="segment-sub">Airport / Transit Hub</span>
+                </div>
+                
+                <!-- TO -->
+                <div class="console-segment bordered-left">
+                  <label for="destination">TO / DESTINATION</label>
+                  <div class="input-wrap no-border">
+                    <input type="text" id="destination" name="destination" placeholder="Rishikesh, India" required minlength="2" class="big-input" />
+                  </div>
+                  <span class="segment-sub">City, Country or Region</span>
+                </div>
+                
+                <!-- DATES -->
+                <div class="console-segment bordered-left segment-dates">
+                  <label>DATES (Departure &rarr; Return)</label>
+                  <div class="dates-flex">
+                    <div class="input-wrap no-border">
+                      <input type="date" id="start_date" name="start_date" required class="big-input" />
+                    </div>
+                    <div class="input-wrap no-border">
+                      <input type="date" id="end_date" name="end_date" required class="big-input" />
+                    </div>
+                  </div>
+                  <span class="segment-sub night-counter" id="night-counter">4 Nights &middot; 5 Days</span>
+                </div>
+                
+                <!-- TRAVELERS & BUDGET -->
+                <div class="console-segment bordered-left">
+                  <label>TRAVELERS &amp; BUDGET</label>
+                  <div class="traveler-budget-flex">
+                    <div class="tb-item">
+                      <i class="fa-solid fa-users"></i>
+                      <input type="number" id="travelers" name="travelers" value="2" min="1" max="20" required class="med-input" />
+                    </div>
+                    <div class="tb-item">
+                      <i class="fa-solid fa-coins"></i>
+                      <input type="number" id="budget" name="budget" placeholder="2500" min="1" step="50" required class="med-input" />
+                    </div>
+                    <select id="currency" name="currency" class="med-select" required>
+                      <option value="USD" selected>USD ($)</option>
+                      <option value="EUR">EUR (&euro;)</option>
+                      <option value="GBP">GBP (&pound;)</option>
+                      <option value="INR">INR (&#8377;)</option>
+                      <option value="JPY">JPY (&yen;)</option>
+                      <option value="AUD">AUD ($)</option>
+                      <option value="CAD">CAD ($)</option>
+                    </select>
+                  </div>
+                  <span class="segment-sub">Total trip budget</span>
+                </div>
+              </div>
+              
+              <!-- Bottom Row: Preferences (Pacing, Themes, Vision) -->
+              <div class="preferences-console">
+                <div class="pref-left">
+                  <div class="pref-group">
+                    <label>TRIP PACING</label>
+                    <div class="pacing-selector" id="pacing-selector">
+                      <button type="button" class="pace-btn" data-pace="Relaxed"><i class="fa-solid fa-mug-hot"></i> Relaxed</button>
+                      <button type="button" class="pace-btn active" data-pace="Balanced"><i class="fa-solid fa-scale-balanced"></i> Balanced</button>
+                      <button type="button" class="pace-btn" data-pace="Fast-Paced"><i class="fa-solid fa-bolt"></i> Fast-Paced</button>
+                    </div>
+                  </div>
+                  
+                  <div class="pref-group">
+                    <label>QUICK THEMES</label>
+                    <div class="theme-tags" id="quick-themes">
+                      <button type="button" class="theme-tag" data-theme="Food & Dining">🍜 Food &amp; Dining</button>
+                      <button type="button" class="theme-tag" data-theme="History & Culture">🏛️ History</button>
+                      <button type="button" class="theme-tag" data-theme="Yoga & Wellness">🧘 Wellness</button>
+                      <button type="button" class="theme-tag" data-theme="Adventure">🏔️ Adventure</button>
+                      <button type="button" class="theme-tag" data-theme="Nature">🌅 Nature</button>
+                      <button type="button" class="theme-tag" data-theme="Shopping">🛍️ Shopping</button>
+                    </div>
+                  </div>
+                  
+                  <div class="pref-group" style="display:none;">
+                    <div class="chips" id="interest-chips"></div>
+                    <input type="text" id="interest-input" hidden />
+                  </div>
+                </div>
+                
+                <div class="pref-right">
+                  <div class="pref-group">
+                    <label for="custom_notes">TRIP VISION &amp; SPECIAL REQUESTS</label>
+                    <textarea id="custom_notes" name="custom_notes" rows="3" placeholder="Tell us your vibe &mdash; e.g. romantic riverfront views, slow mornings, vegetarian..." class="vision-textarea"></textarea>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- CTA -->
+              <div class="form-cta">
+                <button type="submit" class="btn btn-primary btn-giant" id="submit-btn">
+                   BUILD MY DETAILED ITINERARY
+                </button>
+                <div class="cta-badges">
+                  <span><i class="fa-solid fa-plane"></i> Live Flights &amp; Hotels</span>
+                  <span><i class="fa-solid fa-map-location-dot"></i> Smart Clustered Days</span>
+                  <span><i class="fa-solid fa-cloud-sun"></i> Live Weather Forecast</span>
+                  <span><i class="fa-solid fa-microchip"></i> Model Context Protocol (MCP)</span>
+                </div>
+              </div>
+              <p class="form-error" id="form-error" role="alert" hidden></p>
+            </form>
+          </div>
+
+          <!-- Quick Vibe Inspiration Pills (TripAdvisor style) -->
+          <div class="quick-vibe-bar">
+            <span class="vibe-label"><i class="fa-solid fa-compass"></i> Popular Ideas:</span>
+            <button type="button" class="vibe-quick-pill" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Slow mornings, matcha tea houses, and quiet temple walks"><i class="fa-solid fa-bowl-rice"></i> Kyoto Food &amp; Temples</button>
+            <button type="button" class="vibe-quick-pill" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Scenic river bluffs, Ganga Aarti, and Himalayan meditation"><i class="fa-solid fa-spa"></i> Rishikesh Retreat</button>
+            <button type="button" class="vibe-quick-pill" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="History & Culture" data-vision="Alfama miradouros, tram rides, and pastel de nata bakeries"><i class="fa-solid fa-landmark"></i> Lisbon Tram Trails</button>
+          </div>
+        </div>
+
+        <!-- Right Side: Trending Escapes & Live Inspiration -->
+        <aside class="hero-trending-pane">
+          <div class="trending-pane-head">
+            <div class="trending-badge"><i class="fa-solid fa-fire"></i> Top Escapes This Season</div>
+            <p>Click any card to auto-populate the planner</p>
+          </div>
+
+          <div class="trending-cards-stack">
+            <!-- Card 1: Kyoto -->
+            <article class="trending-escape-card" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="History & Culture" data-vision="Romantic temple walks, Higashiyama lantern paths, and kaiseki dinners">
+              <div class="escape-img-wrap">
+                <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=500&auto=format&fit=crop&q=80" alt="Kyoto, Japan" loading="lazy" />
+                <span class="escape-chip">4 Nights &bull; 5 Days</span>
+                <span class="escape-rating"><i class="fa-solid fa-star"></i> 4.9</span>
+              </div>
+              <div class="escape-card-body">
+                <div class="escape-title-row">
+                  <h4>Kyoto Cultural Odyssey</h4>
+                  <span class="escape-price">$2,500</span>
+                </div>
+                <p class="escape-sub">Higashiyama shrines, Gion tea alleys, and bamboo paths.</p>
+                <div class="escape-action-row">
+                  <span class="escape-tag">Historic Hub</span>
+                  <span class="btn-quick-fill">Quick Fill <i class="fa-solid fa-arrow-right"></i></span>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 2: Rishikesh -->
+            <article class="trending-escape-card" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Himalayan foothills, evening Ganga Aarti, quiet yoga sessions and river meditation">
+              <div class="escape-img-wrap">
+                <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=500&auto=format&fit=crop&q=80" alt="Rishikesh, India" loading="lazy" />
+                <span class="escape-chip">5 Nights &bull; 6 Days</span>
+                <span class="escape-rating"><i class="fa-solid fa-star"></i> 5.0</span>
+              </div>
+              <div class="escape-card-body">
+                <div class="escape-title-row">
+                  <h4>Rishikesh River Corridor</h4>
+                  <span class="escape-price">&#8377;45,000</span>
+                </div>
+                <p class="escape-sub">Delhi train corridor to Parmarth Niketan &amp; Tapovan bluffs.</p>
+                <div class="escape-action-row">
+                  <span class="escape-tag">Yoga Corridor</span>
+                  <span class="btn-quick-fill">Quick Fill <i class="fa-solid fa-arrow-right"></i></span>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 3: Lisbon -->
+            <article class="trending-escape-card" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Alfama viewpoints, Tram 28 hills, Belém maritime promenade, and tavern dinners">
+              <div class="escape-img-wrap">
+                <img src="https://images.unsplash.com/photo-1513326738677-b964603b136d?w=500&auto=format&fit=crop&q=80" alt="Lisbon, Portugal" loading="lazy" />
+                <span class="escape-chip">4 Nights &bull; 5 Days</span>
+                <span class="escape-rating"><i class="fa-solid fa-star"></i> 4.9</span>
+              </div>
+              <div class="escape-card-body">
+                <div class="escape-title-row">
+                  <h4>Lisbon Coastal &amp; Alfama</h4>
+                  <span class="escape-price">&euro;1,800</span>
+                </div>
+                <p class="escape-sub">Historic Cal&ccedil;ada streets, Past&eacute;is de Bel&eacute;m, and Fado music.</p>
+                <div class="escape-action-row">
+                  <span class="escape-tag">Coastal Vibe</span>
+                  <span class="btn-quick-fill">Quick Fill <i class="fa-solid fa-arrow-right"></i></span>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <!-- Community Spotlight Link -->
+          <a href="community.html" class="trending-community-banner">
+            <div class="t-comm-icon"><i class="fa-solid fa-users"></i></div>
+            <div class="t-comm-copy">
+              <strong>Explore Community Journeys</strong>
+              <span>Read real reviews, drop tips &amp; AI-remix itineraries</span>
+            </div>
+            <i class="fa-solid fa-chevron-right t-comm-arrow"></i>
+          </a>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ─── Continuous Horizontal Moving Locations Marquee ────────── -->
+    <section class="locations-marquee-section" aria-label="Popular world destinations">
+      <div class="marquee-header-wrap">
+        <span class="marquee-kicker"><i class="fa-solid fa-earth-americas"></i> Instant Teleport &bull; Live Travel Reel</span>
+        <h2 class="marquee-title">Trending Escapes Around the Globe</h2>
+        <p class="marquee-sub">Gliding live inspirations. Click any destination card to auto-load the plan into the studio.</p>
       </div>
 
-      <div class="form-card" id="form-card">
-        <h2 class="card-title"><i class="fa-solid fa-paper-plane"></i> Start a plan</h2>
-        <form id="plan-form" novalidate>
-          <div class="field-row field-row-dest">
-            <div class="field">
-              <label for="origin">Flying from <span class="label-optional">optional</span></label>
-              <div class="input-wrap">
-                <i class="fa-solid fa-plane-departure"></i>
-                <input type="text" id="origin" name="origin" placeholder="Delhi, India" />
+      <div class="locations-marquee-container">
+        <div class="locations-marquee-rail">
+          <!-- Primary Track -->
+          <div class="locations-marquee-track">
+            <!-- 1. Kyoto -->
+            <article class="marquee-loc-card" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="History & Culture" data-vision="Slow mornings, matcha tea houses, Higashiyama lantern paths, and kaiseki dining">
+              <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&q=85&w=800" alt="Kyoto, Japan" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇯🇵 Japan</span>
+                <h4 class="loc-title">Kyoto Ancient Temples</h4>
+                <p class="loc-meta">4 Nights &bull; $2,500 &bull; Historic Gion</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
               </div>
-            </div>
-            <div class="field">
-              <label for="destination">Destination</label>
-              <div class="input-wrap">
-                <i class="fa-solid fa-location-dot"></i>
-                <input type="text" id="destination" name="destination" placeholder="Rishikesh, India" required minlength="2" />
-              </div>
-            </div>
-          </div>
-          <p class="field-hint">Hotels are auto-picked at your destination. Add a departure city to get a recommended flight.</p>
-          <input type="hidden" id="flight_destination" name="flight_destination" value="" />
-          <input type="hidden" id="include_flights" name="include_flights" value="" />
-          <input type="hidden" id="include_hotels" name="include_hotels" value="on" />
+            </article>
 
-          <div class="field-row">
-            <div class="field">
-              <label for="start_date">Start date</label>
-              <div class="input-wrap">
-                <i class="fa-regular fa-calendar"></i>
-                <input type="date" id="start_date" name="start_date" required />
+            <!-- 2. Rishikesh -->
+            <article class="marquee-loc-card" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Himalayan foothills, evening Ganga Aarti, quiet yoga sessions and river meditation">
+              <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&q=85&w=800" alt="Rishikesh, India" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇮🇳 India</span>
+                <h4 class="loc-title">Rishikesh Sacred River</h4>
+                <p class="loc-meta">5 Nights &bull; &#8377;45k &bull; Yoga Corridor</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
               </div>
-            </div>
-            <div class="field">
-              <label for="end_date">End date</label>
-              <div class="input-wrap">
-                <i class="fa-regular fa-calendar-check"></i>
-                <input type="date" id="end_date" name="end_date" required />
+            </article>
+
+            <!-- 3. Amalfi Coast -->
+            <article class="marquee-loc-card" data-dest="Amalfi Coast, Italy" data-origin="Rome, Italy" data-budget="3200" data-curr="EUR" data-pacing="Relaxed" data-theme="Food & Dining" data-vision="Positano cliffside pastel villas, Mediterranean boat ferries, fresh limoncello, and scenic coastal dining">
+              <img src="https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&q=85&w=800" alt="Amalfi Coast, Italy" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇮🇹 Italy</span>
+                <h4 class="loc-title">Amalfi &amp; Positano</h4>
+                <p class="loc-meta">5 Nights &bull; &euro;3,200 &bull; Cliffside Coast</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
               </div>
-            </div>
+            </article>
+
+            <!-- 4. Zermatt -->
+            <article class="marquee-loc-card" data-dest="Zermatt, Switzerland" data-origin="Zurich, Switzerland" data-budget="2900" data-curr="USD" data-pacing="Balanced" data-theme="Adventure" data-vision="Matterhorn alpine views, glacier paradise cable cars, scenic cogwheel trains, and cozy raclette chalets">
+              <img src="https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&q=85&w=800" alt="Zermatt, Switzerland" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇨🇭 Switzerland</span>
+                <h4 class="loc-title">Swiss Alps &amp; Zermatt</h4>
+                <p class="loc-meta">4 Nights &bull; $2,900 &bull; Glacier Trails</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+
+            <!-- 5. Lisbon -->
+            <article class="marquee-loc-card" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="History & Culture" data-vision="Alfama viewpoints, Tram 28 hills, Belém maritime promenade, and tavern dinners">
+              <img src="https://images.unsplash.com/photo-1513326738677-b964603b136d?auto=format&fit=crop&q=85&w=800" alt="Lisbon, Portugal" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇵🇹 Portugal</span>
+                <h4 class="loc-title">Lisbon Miradouros</h4>
+                <p class="loc-meta">4 Nights &bull; &euro;1,800 &bull; Alfama &amp; Bel&eacute;m</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+
+            <!-- 6. Paris -->
+            <article class="marquee-loc-card" data-dest="Paris, France" data-origin="London, UK" data-budget="2200" data-curr="EUR" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Montmartre art alleys, Seine twilight strolls, Latin Quarter cafes, and classic French bakeries">
+              <img src="https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=85&w=800" alt="Paris, France" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.8</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇫🇷 France</span>
+                <h4 class="loc-title">Parisian Arts &amp; Cafes</h4>
+                <p class="loc-meta">5 Nights &bull; &euro;2,200 &bull; Montmartre</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+
+            <!-- 7. Santorini -->
+            <article class="marquee-loc-card" data-dest="Santorini, Greece" data-origin="Athens, Greece" data-budget="2600" data-curr="EUR" data-pacing="Relaxed" data-theme="Nature" data-vision="Oia cliffside blue domes, caldera sunset sailing, Aegean seafood, and volcanic beaches">
+              <img src="https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?auto=format&fit=crop&q=85&w=800" alt="Santorini, Greece" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇬🇷 Greece</span>
+                <h4 class="loc-title">Santorini Blue Caldera</h4>
+                <p class="loc-meta">4 Nights &bull; &euro;2,600 &bull; Oia Sunsets</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+
+            <!-- 8. Bali -->
+            <article class="marquee-loc-card" data-dest="Bali, Indonesia" data-origin="Singapore" data-budget="1800" data-curr="USD" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Ubud emerald rice terraces, sacred monkey forest, sunset beach temples, and traditional spa wellness">
+              <img src="https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&q=85&w=800" alt="Bali, Indonesia" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇮🇩 Indonesia</span>
+                <h4 class="loc-title">Ubud Rice Terraces</h4>
+                <p class="loc-meta">6 Nights &bull; $1,800 &bull; Jungle Spa</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
           </div>
 
-          <div class="field-row">
-            <div class="field">
-              <label for="budget">Budget</label>
-              <div class="input-wrap">
-                <i class="fa-solid fa-coins"></i>
-                <input type="number" id="budget" name="budget" placeholder="2500" min="1" step="50" required />
+          <!-- Duplicate Track for Seamless Infinite Looping -->
+          <div class="locations-marquee-track" aria-hidden="true">
+            <!-- 1. Kyoto -->
+            <article class="marquee-loc-card" data-dest="Kyoto, Japan" data-origin="Tokyo, Japan" data-budget="2500" data-curr="USD" data-pacing="Balanced" data-theme="History & Culture" data-vision="Slow mornings, matcha tea houses, Higashiyama lantern paths, and kaiseki dining">
+              <img src="https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&q=85&w=800" alt="Kyoto, Japan" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇯🇵 Japan</span>
+                <h4 class="loc-title">Kyoto Ancient Temples</h4>
+                <p class="loc-meta">4 Nights &bull; $2,500 &bull; Historic Gion</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
               </div>
-            </div>
-            <div class="field">
-              <label for="currency">Currency</label>
-              <div class="input-wrap">
-                <i class="fa-solid fa-money-bill-wave"></i>
-                <select id="currency" name="currency" required style="width: 100%; padding: 12px 14px 12px 38px; border: 1.5px solid var(--line); border-radius: var(--radius-sm); font-family: inherit; font-size: .96rem; color: var(--ink); background: #fbfcfe; appearance: none; cursor: pointer;">
-                  <option value="USD" selected>USD ($)</option>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="GBP">GBP (£)</option>
-                  <option value="INR">INR (₹)</option>
-                  <option value="JPY">JPY (¥)</option>
-                  <option value="AUD">AUD ($)</option>
-                  <option value="CAD">CAD ($)</option>
-                </select>
+            </article>
+
+            <!-- 2. Rishikesh -->
+            <article class="marquee-loc-card" data-dest="Rishikesh, India" data-origin="Delhi, India" data-budget="45000" data-curr="INR" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Himalayan foothills, evening Ganga Aarti, quiet yoga sessions and river meditation">
+              <img src="https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&q=85&w=800" alt="Rishikesh, India" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇮🇳 India</span>
+                <h4 class="loc-title">Rishikesh Sacred River</h4>
+                <p class="loc-meta">5 Nights &bull; &#8377;45k &bull; Yoga Corridor</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
               </div>
-            </div>
-          </div>
+            </article>
 
-          <div class="field">
-            <div class="field">
-              <label for="travelers">Travelers</label>
-              <div class="input-wrap">
-                <i class="fa-solid fa-users"></i>
-                <input type="number" id="travelers" name="travelers" value="2" min="1" max="20" required />
+            <!-- 3. Amalfi Coast -->
+            <article class="marquee-loc-card" data-dest="Amalfi Coast, Italy" data-origin="Rome, Italy" data-budget="3200" data-curr="EUR" data-pacing="Relaxed" data-theme="Food & Dining" data-vision="Positano cliffside pastel villas, Mediterranean boat ferries, fresh limoncello, and scenic coastal dining">
+              <img src="https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&q=85&w=800" alt="Amalfi Coast, Italy" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇮🇹 Italy</span>
+                <h4 class="loc-title">Amalfi &amp; Positano</h4>
+                <p class="loc-meta">5 Nights &bull; &euro;3,200 &bull; Cliffside Coast</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
               </div>
-            </div>
-          </div>
+            </article>
 
-          <div class="field">
-            <label>Interests</label>
-            <div class="chips" id="interest-chips">
-              <!-- chips injected by JS -->
-            </div>
-            <div class="input-wrap chip-input-wrap">
-              <i class="fa-solid fa-tag"></i>
-              <input type="text" id="interest-input" placeholder="Add an interest and press Enter…" />
-            </div>
-          </div>
+            <!-- 4. Zermatt -->
+            <article class="marquee-loc-card" data-dest="Zermatt, Switzerland" data-origin="Zurich, Switzerland" data-budget="2900" data-curr="USD" data-pacing="Balanced" data-theme="Adventure" data-vision="Matterhorn alpine views, glacier paradise cable cars, scenic cogwheel trains, and cozy raclette chalets">
+              <img src="https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&q=85&w=800" alt="Zermatt, Switzerland" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 5.0</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇨🇭 Switzerland</span>
+                <h4 class="loc-title">Swiss Alps &amp; Zermatt</h4>
+                <p class="loc-meta">4 Nights &bull; $2,900 &bull; Glacier Trails</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
 
-          <button type="submit" class="btn btn-primary btn-block" id="submit-btn">
-            <i class="fa-solid fa-route"></i> Build my itinerary
-          </button>
-          <p class="form-error" id="form-error" role="alert" hidden></p>
-        </form>
+            <!-- 5. Lisbon -->
+            <article class="marquee-loc-card" data-dest="Lisbon, Portugal" data-origin="London, UK" data-budget="1800" data-curr="EUR" data-pacing="Balanced" data-theme="History & Culture" data-vision="Alfama viewpoints, Tram 28 hills, Belém maritime promenade, and tavern dinners">
+              <img src="https://images.unsplash.com/photo-1513326738677-b964603b136d?auto=format&fit=crop&q=85&w=800" alt="Lisbon, Portugal" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇵🇹 Portugal</span>
+                <h4 class="loc-title">Lisbon Miradouros</h4>
+                <p class="loc-meta">4 Nights &bull; &euro;1,800 &bull; Alfama &amp; Bel&eacute;m</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+
+            <!-- 6. Paris -->
+            <article class="marquee-loc-card" data-dest="Paris, France" data-origin="London, UK" data-budget="2200" data-curr="EUR" data-pacing="Balanced" data-theme="Food & Dining" data-vision="Montmartre art alleys, Seine twilight strolls, Latin Quarter cafes, and classic French bakeries">
+              <img src="https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&q=85&w=800" alt="Paris, France" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.8</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇫🇷 France</span>
+                <h4 class="loc-title">Parisian Arts &amp; Cafes</h4>
+                <p class="loc-meta">5 Nights &bull; &euro;2,200 &bull; Montmartre</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+
+            <!-- 7. Santorini -->
+            <article class="marquee-loc-card" data-dest="Santorini, Greece" data-origin="Athens, Greece" data-budget="2600" data-curr="EUR" data-pacing="Relaxed" data-theme="Nature" data-vision="Oia cliffside blue domes, caldera sunset sailing, Aegean seafood, and volcanic beaches">
+              <img src="https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?auto=format&fit=crop&q=85&w=800" alt="Santorini, Greece" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇬🇷 Greece</span>
+                <h4 class="loc-title">Santorini Blue Caldera</h4>
+                <p class="loc-meta">4 Nights &bull; &euro;2,600 &bull; Oia Sunsets</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+
+            <!-- 8. Bali -->
+            <article class="marquee-loc-card" data-dest="Bali, Indonesia" data-origin="Singapore" data-budget="1800" data-curr="USD" data-pacing="Relaxed" data-theme="Yoga & Wellness" data-vision="Ubud emerald rice terraces, sacred monkey forest, sunset beach temples, and traditional spa wellness">
+              <img src="https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&q=85&w=800" alt="Bali, Indonesia" loading="lazy" />
+              <div class="loc-card-scrim"></div>
+              <div class="loc-card-badge"><i class="fa-solid fa-star"></i> 4.9</div>
+              <div class="loc-card-info">
+                <span class="loc-country">🇮🇩 Indonesia</span>
+                <h4 class="loc-title">Ubud Rice Terraces</h4>
+                <p class="loc-meta">6 Nights &bull; $1,800 &bull; Jungle Spa</p>
+                <span class="loc-action">Auto-Plan <i class="fa-solid fa-arrow-right"></i></span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── What Makes Wayfarer Different (TripAdvisor style) ────── -->
+    <section class="features-showcase">
+      <div class="features-inner">
+        <div class="features-head">
+          <span class="features-kicker"><i class="fa-solid fa-compass"></i> Engineered for Reality</span>
+          <h2>Why travelers trust Wayfarer over basic prompts</h2>
+          <p>Most AI trip planners ping-pong across a city and treat hotel stays like daily attractions. We solved the 4 core pitfalls.</p>
+        </div>
+        <div class="features-grid">
+          <div class="feature-item-card">
+            <div class="f-icon" style="background:#f0fdfa; color:#0f766e;"><i class="fa-solid fa-map-location-dot"></i></div>
+            <h3>Neighborhood-First Clustering</h3>
+            <p>Every day is organized strictly within a tight geographic radius, calculating actual walking &amp; transit friction so you never waste hours commuting.</p>
+          </div>
+          <div class="feature-item-card">
+            <div class="f-icon" style="background:#e0f2fe; color:#0284c7;"><i class="fa-solid fa-hotel"></i></div>
+            <h3>The Persistent Lodging Anchor</h3>
+            <p>Accommodation is modeled as a persistent home base with morning departures and evening returns — completely solving the "Stay at Hotel A" flaw.</p>
+          </div>
+          <div class="feature-item-card">
+            <div class="f-icon" style="background:#fef3c7; color:#d97706;"><i class="fa-solid fa-cloud-sun"></i></div>
+            <h3>Live Weather-Driven Scheduling</h3>
+            <p>16-day live weather forecasts directly shape activities: rainy mornings automatically shift to indoor museums, arcades, and sheltered markets.</p>
+          </div>
+          <div class="feature-item-card">
+            <div class="f-icon" style="background:#fdf2f8; color:#db2777;"><i class="fa-solid fa-microchip"></i></div>
+            <h3>Model Context Protocol (MCP)</h3>
+            <p>Open industry standards allow you to export one-click RFC 5545 calendar feeds for Google/Apple Calendar and publication-grade vector PDF dossiers.</p>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -254,8 +626,8 @@
         <article class="agent-card">
           <div class="agent-icon research"><i class="fa-solid fa-magnifying-glass"></i></div>
           <h3>Research Agent</h3>
-          <p>Pulls LLM-ready context from the web, folds in live weather so rainy days become indoor days, and checks real-time exchange rates.</p>
-          <ul><li><i class="fa-solid fa-globe"></i> web_search</li><li><i class="fa-solid fa-cloud-sun"></i> get_weather</li><li><i class="fa-solid fa-money-bill-transfer"></i> get_exchange_rate</li></ul>
+          <p>Pulls LLM-ready context from the web, folds in live weather so rainy days become indoor days, and invokes MCP safety bulletins.</p>
+          <ul><li><i class="fa-solid fa-globe"></i> web_search</li><li><i class="fa-solid fa-cloud-sun"></i> get_weather</li><li><i class="fa-solid fa-shield-halved"></i> MCP travel_safety</li></ul>
         </article>
         <article class="agent-card">
           <div class="agent-icon plan"><i class="fa-solid fa-pen-ruler"></i></div>
@@ -272,8 +644,8 @@
         <article class="agent-card">
           <div class="agent-icon finalize"><i class="fa-solid fa-map-location-dot"></i></div>
           <h3>Finalize Agent</h3>
-          <p>Expands your approved draft into a rich itinerary, then geocodes every stop and computes walking/driving legs on an interactive map.</p>
-          <ul><li><i class="fa-solid fa-route"></i> build_route_map</li><li><i class="fa-solid fa-clock"></i> leg time estimates</li><li><i class="fa-solid fa-ruler"></i> total km traveled</li></ul>
+          <p>Expands your approved draft into a rich itinerary, builds interactive route maps, and invokes MCP for visual PDF and calendar feeds.</p>
+          <ul><li><i class="fa-solid fa-route"></i> build_route_map</li><li><i class="fa-solid fa-file-pdf"></i> MCP generate_pdf</li><li><i class="fa-solid fa-calendar-plus"></i> MCP calendar_ics</li></ul>
         </article>
       </div>
     </section>
@@ -288,8 +660,115 @@
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="js/api.js"></script>
-  <script src="js/maps.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/api.js?v=3"></script>
+  <script src="js/maps.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
+
+  <!-- ─── Slide-Out Drawer (Right) ────────────────────────────── -->
+  <div class="drawer-overlay" id="drawer-overlay"></div>
+  <aside class="side-drawer" id="side-drawer">
+    <div class="drawer-header">
+      <img src="" alt="" class="drawer-header-img" id="drawer-img" />
+      <div class="drawer-header-info">
+        <h3 class="drawer-title" id="drawer-title">Place Name</h3>
+        <div class="drawer-sub" id="drawer-loc">Location</div>
+      </div>
+      <button type="button" class="drawer-close" id="drawer-close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    
+    <div class="drawer-body" id="drawer-body">
+      <!-- Dynamic content injected here based on mode -->
+    </div>
+    
+    <div class="chat-input-area" id="drawer-footer-chat" hidden>
+      <input type="text" id="chat-input-box" placeholder="Ask anything about this place..." autocomplete="off" />
+      <button type="button" class="chat-send-btn" id="chat-send-btn"><i class="fa-solid fa-paper-plane"></i></button>
+    </div>
+  </aside>
+
+  <!-- ─── Supabase Auth Modal ────────────────────────────────────── -->
+  <div class="modal-overlay" id="auth-modal" hidden>
+    <div class="modal-card auth-modal-card">
+      <button type="button" class="modal-close-btn" id="auth-modal-close"><i class="fa-solid fa-xmark"></i></button>
+      <div class="auth-header">
+        <div class="auth-brand"><i class="fa-solid fa-compass"></i> Wayfarer Travelers</div>
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab-btn active" id="tab-login-btn">Sign In</button>
+          <button type="button" class="auth-tab-btn" id="tab-signup-btn">Create Account</button>
+        </div>
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form" class="auth-form" onsubmit="return false;">
+        <div class="form-field">
+          <label for="login-email">Email Address</label>
+          <input type="email" id="login-email" required placeholder="you@example.com" />
+        </div>
+        <div class="form-field">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" required placeholder="••••••••" />
+        </div>
+        <p class="auth-error-msg" id="login-error" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" id="login-submit-btn">Sign In to Wayfarer</button>
+      </form>
+
+      <!-- Signup Form -->
+      <form id="signup-form" class="auth-form" onsubmit="return false;" hidden>
+        <div class="form-field">
+          <label for="signup-name">Full Name</label>
+          <input type="text" id="signup-name" required placeholder="e.g. Elena Rostova" />
+        </div>
+        <div class="form-field">
+          <label for="signup-email">Email Address</label>
+          <input type="email" id="signup-email" required placeholder="you@example.com" />
+        </div>
+        <div class="form-field">
+          <label for="signup-password">Password (min 6 chars)</label>
+          <input type="password" id="signup-password" minlength="6" required placeholder="Create a password" />
+        </div>
+        <div class="form-field">
+          <label for="signup-bio">Bio &amp; Travel Style (Optional)</label>
+          <input type="text" id="signup-bio" placeholder="e.g. Photographer, temple enthusiast, foodie" />
+        </div>
+        <p class="auth-error-msg" id="signup-error" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" id="signup-submit-btn">Create Account &amp; Join Community</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── Share to Community Modal ──────────────────────────────────── -->
+  <div class="modal-overlay" id="share-modal" hidden>
+    <div class="modal-card share-modal-card">
+      <button type="button" class="modal-close-btn" id="share-modal-close"><i class="fa-solid fa-xmark"></i></button>
+      <div class="modal-head">
+        <h3><i class="fa-solid fa-globe"></i> Share Itinerary with the Community</h3>
+        <p>Publish your AI-crafted trip so other travelers can view, review, and offer local tips.</p>
+      </div>
+      <form id="share-form" onsubmit="return false;">
+        <div class="form-field">
+          <label for="share-title">Itinerary Title</label>
+          <input type="text" id="share-title" required placeholder="e.g. Kyoto 4-Day Autumn Honeymoon" />
+        </div>
+        <div class="form-field">
+          <label for="share-desc">Traveler's Note / Reflection</label>
+          <textarea id="share-desc" rows="3" placeholder="Share why you loved this route, key tips for other travelers, or what made it special..."></textarea>
+        </div>
+        <div class="form-field">
+          <label>Theme Tags</label>
+          <div class="share-tags-picker" id="share-tags-picker">
+            <label class="tag-check"><input type="checkbox" value="Culture" checked /> 🏛️ Culture</label>
+            <label class="tag-check"><input type="checkbox" value="Food & Dining" checked /> 🍜 Food &amp; Dining</label>
+            <label class="tag-check"><input type="checkbox" value="Wellness" /> 🧘 Wellness</label>
+            <label class="tag-check"><input type="checkbox" value="Honeymoon" /> 💍 Honeymoon</label>
+            <label class="tag-check"><input type="checkbox" value="Adventure" /> 🏔️ Adventure</label>
+            <label class="tag-check"><input type="checkbox" value="Nature" /> 🌅 Nature</label>
+          </div>
+        </div>
+        <p class="auth-error-msg" id="share-error" hidden></p>
+        <button type="submit" class="btn btn-primary btn-block" id="share-submit-btn"><i class="fa-solid fa-paper-plane"></i> Publish to Community Feed</button>
+      </form>
+    </div>
+  </div>
+
 </body>
 </html>

@@ -1,0 +1,17 @@
+[
+  {
+    "persona": "Slow-Paced Spiritual",
+    "vibe_tags": ["Spiritual", "Slow Pace", "Wellness", "Quiet", "Nature"],
+    "preferences": "I like to start my days slowly, ideally with meditation or a quiet walk. I despise rushing from landmark to landmark. I prefer spending 3 hours soaking in the atmosphere of one temple rather than seeing five temples in one day. I eat a vegetarian diet and prefer cafes with river or mountain views."
+  },
+  {
+    "persona": "Action-Packed Historian",
+    "vibe_tags": ["Fast-Paced", "History", "Culture", "Architecture", "Photography"],
+    "preferences": "I want to maximize my time. I wake up early to beat the crowds at major historical sites and museums. I don't mind walking 15,000 steps a day. I want efficient transit routes and quick lunches near the landmarks so I don't waste time traveling back and forth across the city."
+  },
+  {
+    "persona": "Foodie Explorer",
+    "vibe_tags": ["Food", "Street Food", "Dining", "Nightlife", "Local Culture"],
+    "preferences": "I plan my trips entirely around my meals. I want to visit local spice markets in the morning, find the best hidden street food stalls for lunch, and have reservations at highly-rated atmospheric restaurants for dinner. I prefer lively, bustling neighborhoods."
+  }
+]

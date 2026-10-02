@@ -14,6 +14,8 @@ env/
 *.sqlite-shm
 *.sqlite-wal
 checkpoints.sqlite*
+chroma_db/
+**/chroma_db/
 
 # Tooling
 .pytest_cache/

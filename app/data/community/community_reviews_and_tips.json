@@ -1,0 +1,82 @@
+[
+  {
+    "id": "tip_delhi_1",
+    "destination": "Delhi, India",
+    "city": "delhi",
+    "country": "India",
+    "category": "community_tip",
+    "section": "Transit & Advice",
+    "source": "Reddit r/Travel & TripAdvisor Forums",
+    "content": "[Community Tip: Delhi Transit] Skip the auto-rickshaw haggling in Delhi and use the Delhi Metro. It is clean, air-conditioned, incredibly cheap, and bypasses the terrible road traffic. Get a tourist smart card if you're there for a few days. For places the metro doesn't reach, use the Uber or Ola apps for transparent pricing."
+  },
+  {
+    "id": "tip_delhi_2",
+    "destination": "Delhi, India",
+    "city": "delhi",
+    "country": "India",
+    "category": "community_tip",
+    "section": "Attractions",
+    "source": "Travel Blogger Forums",
+    "content": "[Community Tip: Red Fort vs Humayun's Tomb] Many travelers feel the Red Fort is too crowded and structurally damaged. Humayun's Tomb is consistently rated as much more beautiful, peaceful, and better maintained. Do both if you have time, but prioritize Humayun's Tomb for photography, especially at golden hour."
+  },
+  {
+    "id": "tip_rishikesh_1",
+    "destination": "Rishikesh, India",
+    "city": "rishikesh",
+    "country": "India",
+    "category": "community_tip",
+    "section": "Dining & Atmosphere",
+    "source": "Backpacker Forums",
+    "content": "[Community Tip: Rishikesh Cafes] Little Buddha Cafe is famous but gets extremely loud and busy by sunset. If you want a truly peaceful riverside vibe, head slightly north of Laxman Jhula to Secret Garden Cafe or the cafes tucked away in the upper Tapovan alleys."
+  },
+  {
+    "id": "tip_rishikesh_2",
+    "destination": "Rishikesh, India",
+    "city": "rishikesh",
+    "country": "India",
+    "category": "community_tip",
+    "section": "Attractions & Monkeys",
+    "source": "Reddit r/IndiaTravel",
+    "content": "[Community Tip: Rishikesh Warnings] Do NOT carry food in open plastic bags when crossing the suspension bridges (Ram Jhula or Laxman Jhula) or walking to the Beatles Ashram. The macaque monkeys are aggressive and will snatch bags right out of your hands. Keep all food inside a zipped backpack."
+  },
+  {
+    "id": "tip_kyoto_1",
+    "destination": "Kyoto, Japan",
+    "city": "kyoto",
+    "country": "Japan",
+    "category": "community_tip",
+    "section": "Timing & Crowds",
+    "source": "TripAdvisor Reviews",
+    "content": "[Community Tip: Kyoto Crowds] Kyoto is suffering from severe overtourism. If you want to see Fushimi Inari Taisha (the thousands of orange gates) or the Arashiyama Bamboo Grove without thousands of people ruining your photos, you MUST arrive before 7:00 AM. By 9:00 AM, they are shoulder-to-shoulder crowded."
+  },
+  {
+    "id": "tip_kyoto_2",
+    "destination": "Kyoto, Japan",
+    "city": "kyoto",
+    "country": "Japan",
+    "category": "community_tip",
+    "section": "Dining Etiquette",
+    "source": "Reddit r/JapanTravel",
+    "content": "[Community Tip: Kyoto Dining] Do not try to eat while walking down the street, especially in the Nishiki Market or historic Gion areas. It is considered extremely rude in Japanese culture. You should buy your food, stand near the stall to eat it, and throw away your trash there before moving on."
+  },
+  {
+    "id": "tip_lisbon_1",
+    "destination": "Lisbon, Portugal",
+    "city": "lisbon",
+    "country": "Portugal",
+    "category": "community_tip",
+    "section": "Transit & Warnings",
+    "source": "Travel Forums",
+    "content": "[Community Tip: Lisbon Tram 28] Tram 28 is iconic but it is basically a pickpocket express. Do not ride it during peak daytime hours with your phone or wallet in your pocket. Ride it at 8:00 AM or after 9:00 PM if you just want the scenic experience."
+  },
+  {
+    "id": "tip_lisbon_2",
+    "destination": "Lisbon, Portugal",
+    "city": "lisbon",
+    "country": "Portugal",
+    "category": "community_tip",
+    "section": "Dining & Couvert",
+    "source": "TripAdvisor Advice",
+    "content": "[Community Tip: Lisbon Dining] When you sit down at a traditional Portuguese restaurant, waiters will bring bread, olives, and cheese (the 'couvert') unprompted. This is NOT free. If you touch it, you pay for it. If you don't want it, just politely say no or wave it away when they set it down."
+  }
+]

@@ -89,6 +89,35 @@ def _geocode_cache_set(key: str, value: dict[str, Any] | None) -> None:
     _geocode_cache[key] = (time.time() + _GEOCODE_CACHE_TTL, value)
 
 
+def _map_wmo_code(code: int | None, rain_mm: float) -> tuple[str, str, str, str]:
+    """Map WMO weather code to condition, font-awesome icon, theme, and activity tip."""
+    if code is None:
+        if rain_mm >= 5.0:
+            return "Rainy", "cloud-showers-heavy", "rainy", "Rain expected — carry an umbrella and prioritize indoor sites"
+        return "Fair", "cloud-sun", "fair", "Pleasant weather — good for outdoor touring"
+
+    if code == 0:
+        return "Sunny & Clear", "sun", "sunny", "Clear sunny skies — optimal for photography, outdoor monuments and walks"
+    elif code in (1, 2):
+        return "Partly Cloudy", "cloud-sun", "partly-cloudy", "Pleasant partly cloudy weather — comfortable for all-day exploring"
+    elif code == 3:
+        return "Overcast", "cloud", "cloudy", "Overcast skies — mild temperatures, great for outdoor sights without glare"
+    elif code in (45, 48):
+        return "Fog & Mist", "smog", "foggy", "Morning mist clearing by midday; watch for morning viewpoints visibility"
+    elif code in (51, 53, 55):
+        return "Light Drizzle", "cloud-rain", "drizzle", "Passing light drizzle — bring a light rain jacket or compact umbrella"
+    elif code in (61, 63, 65, 80, 81, 82):
+        return "Rain Showers", "cloud-showers-heavy", "rainy", "Rain showers expected — schedule covered bazaars, museums & indoor temples"
+    elif code in (71, 73, 75, 77, 85, 86):
+        return "Snow & Cold", "snowflake", "snowy", "Snow conditions — warm insulated coat, gloves, and winter footwear essential"
+    elif code in (95, 96, 99):
+        return "Thunderstorm", "bolt", "stormy", "Thunderstorms likely — seek indoor activities and shelter during rain bursts"
+    elif rain_mm >= 5.0:
+        return "Rainy", "cloud-showers-heavy", "rainy", "Rain expected — pack waterproofs and favour indoor plans"
+    else:
+        return "Fair", "cloud-sun", "fair", "Pleasant conditions for sightseeing"
+
+
 async def get_weather(
     destination: str, start_date: str, end_date: str
 ) -> dict[str, Any]:
@@ -105,7 +134,27 @@ async def get_weather(
         return {
             "available": True,
             "source": "stub",
-            "daily": [{"date": start_date, "summary": "Mild, partly cloudy", "rain_mm": 0.0}],
+            "daily": [
+                {
+                    "date": start_date,
+                    "condition": "Partly Cloudy",
+                    "icon": "cloud-sun",
+                    "theme": "partly-cloudy",
+                    "t_max_c": 26.0,
+                    "t_min_c": 17.0,
+                    "t_max_f": 79.0,
+                    "t_min_f": 63.0,
+                    "rain_mm": 0.0,
+                    "rain_prob_pct": 5,
+                    "uv_index": 5.5,
+                    "wind_kmh": 8.5,
+                    "sunrise": "06:15",
+                    "sunset": "18:05",
+                    "weather_code": 1,
+                    "summary": "Partly Cloudy (26.0°C / 17.0°C) — Pleasant partly cloudy weather",
+                    "activity_tip": "Pleasant partly cloudy weather — comfortable for all-day exploring",
+                }
+            ],
         }
 
     today = dt.date.today()
@@ -137,7 +186,7 @@ async def get_weather(
                 params={
                     "latitude": lat,
                     "longitude": lon,
-                    "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+                    "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,weather_code,uv_index_max,wind_speed_10m_max,sunrise,sunset",
                     "start_date": start_date,
                     "end_date": end_date,
                     "timezone": "auto",
@@ -160,13 +209,40 @@ async def get_weather(
     out = []
     for i, day in enumerate(dates):
         rain = (daily.get("precipitation_sum") or [0])[i] or 0.0
+        w_code = (daily.get("weather_code") or [None])[i]
+        cond, icon, theme, tip = _map_wmo_code(w_code, rain)
+        t_max_c = (daily.get("temperature_2m_max") or [None])[i]
+        t_min_c = (daily.get("temperature_2m_min") or [None])[i]
+        t_max_f = round(t_max_c * 9 / 5 + 32, 1) if t_max_c is not None else None
+        t_min_f = round(t_min_c * 9 / 5 + 32, 1) if t_min_c is not None else None
+
+        uv = (daily.get("uv_index_max") or [None])[i]
+        wind = (daily.get("wind_speed_10m_max") or [None])[i]
+        rain_prob = (daily.get("precipitation_probability_max") or [0])[i]
+        raw_sr = (daily.get("sunrise") or [""])[i]
+        raw_ss = (daily.get("sunset") or [""])[i]
+        sunrise = raw_sr.split("T")[-1] if "T" in str(raw_sr) else str(raw_sr)
+        sunset = raw_ss.split("T")[-1] if "T" in str(raw_ss) else str(raw_ss)
+
         out.append(
             {
                 "date": day,
-                "t_max_c": (daily.get("temperature_2m_max") or [None])[i],
-                "t_min_c": (daily.get("temperature_2m_min") or [None])[i],
+                "condition": cond,
+                "icon": icon,
+                "theme": theme,
+                "weather_code": w_code,
+                "t_max_c": t_max_c,
+                "t_min_c": t_min_c,
+                "t_max_f": t_max_f,
+                "t_min_f": t_min_f,
                 "rain_mm": rain,
-                "summary": "Rainy — favour indoor plans" if rain >= 5 else "Dry — outdoors OK",
+                "rain_prob_pct": rain_prob,
+                "uv_index": uv,
+                "wind_kmh": wind,
+                "sunrise": sunrise,
+                "sunset": sunset,
+                "activity_tip": tip,
+                "summary": f"{cond} ({t_max_c}°C / {t_min_c}°C) — {tip}",
             }
         )
     api_end("OpenMeteo", "forecast", t0, days=len(out))
@@ -317,7 +393,6 @@ _WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php"
 _WIKIPEDIA_REST = "https://en.wikipedia.org/api/rest_v1"
 _WIKIPEDIA_REST_SEARCH = "https://en.wikipedia.org/w/rest.php/v1/search/page"
 _WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
-_GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
 _WIKI_HEADERS = {
     "User-Agent": "WayfarerTravelPlanner/1.0 (https://github.com/; travel demo)",
     "Accept": "application/json",
@@ -370,18 +445,26 @@ async def _photon_geocode(
             features = res.json().get("features") or []
             if not features:
                 return None
-            feat = features[0]
-            coords = feat.get("geometry", {}).get("coordinates") or []
-            if len(coords) < 2:
-                return None
-            props = feat.get("properties") or {}
-            return {
-                "name": props.get("name") or query,
-                "label": query,
-                "lat": float(coords[1]),
-                "lon": float(coords[0]),
-                "country": props.get("country"),
-            }
+            for feat in features:
+                coords = feat.get("geometry", {}).get("coordinates") or []
+                if len(coords) < 2:
+                    continue
+                result_lat, result_lon = float(coords[1]), float(coords[0])
+                
+                # Proximity validation
+                if lat is not None and lon is not None:
+                    if _haversine_km(lat, lon, result_lat, result_lon) > 80.0:
+                        continue
+
+                props = feat.get("properties") or {}
+                return {
+                    "name": props.get("name") or query,
+                    "label": query,
+                    "lat": result_lat,
+                    "lon": result_lon,
+                    "country": props.get("country"),
+                }
+            return None
         except (httpx.HTTPError, KeyError, TypeError, ValueError):
             return None
 
@@ -411,26 +494,103 @@ async def _nominatim_geocode(query: str) -> dict[str, Any] | None:
             return None
 
 
+async def _wikipedia_geocode(
+    query: str,
+    *,
+    bias_lat: float | None = None,
+    bias_lon: float | None = None,
+) -> dict[str, Any] | None:
+    """Fetch exact GPS coordinates for known landmarks directly from Wikipedia API."""
+    url = _WIKIPEDIA_API
+    params = {
+        "action": "query",
+        "prop": "coordinates",
+        "titles": query,
+        "format": "json",
+    }
+    async with httpx.AsyncClient(timeout=8) as http:
+        try:
+            res = await http.get(url, params=params, headers=_WIKI_HEADERS)
+            if res.status_code == 200:
+                pages = res.json().get("query", {}).get("pages", {})
+                for p in pages.values():
+                    coords = p.get("coordinates") or []
+                    if coords:
+                        lat, lon = float(coords[0]["lat"]), float(coords[0]["lon"])
+                        if bias_lat is not None and bias_lon is not None:
+                            if _haversine_km(bias_lat, bias_lon, lat, lon) > 90.0:
+                                continue
+                        return {
+                            "name": p.get("title") or query,
+                            "label": query,
+                            "lat": lat,
+                            "lon": lon,
+                            "country": None,
+                        }
+        except Exception:
+            pass
+
+    # Fallback: search Wikipedia generator with coordinates
+    params_search = {
+        "action": "query",
+        "generator": "search",
+        "gsrsearch": query,
+        "gsrlimit": 3,
+        "prop": "coordinates",
+        "format": "json",
+    }
+    async with httpx.AsyncClient(timeout=8) as http:
+        try:
+            res = await http.get(url, params=params_search, headers=_WIKI_HEADERS)
+            if res.status_code == 200:
+                pages = res.json().get("query", {}).get("pages", {})
+                for p in pages.values():
+                    coords = p.get("coordinates") or []
+                    if coords:
+                        lat, lon = float(coords[0]["lat"]), float(coords[0]["lon"])
+                        if bias_lat is not None and bias_lon is not None:
+                            if _haversine_km(bias_lat, bias_lon, lat, lon) > 90.0:
+                                continue
+                        return {
+                            "name": p.get("title") or query,
+                            "label": query,
+                            "lat": lat,
+                            "lon": lon,
+                            "country": None,
+                        }
+        except Exception:
+            pass
+    return None
+
+
 async def geocode_place(
     name: str,
     destination: str = "",
     *,
     bias: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Resolve a place name — Photon (biased) → Open-Meteo → Nominatim."""
+    """Resolve a place name — Wikipedia GPS → Photon (biased) → Open-Meteo → Nominatim."""
     cache_key = _geocode_cache_key(name, destination)
     cached = _geocode_cache_get(cache_key)
     if not isinstance(cached, _GeocodeCacheMiss):
         return cached
 
-    candidates = [name.strip()]
+    candidates = []
     if destination:
         dest_city = destination.split(",")[0].strip()
         if dest_city.lower() not in name.lower():
-            candidates.append(f"{name}, {destination}")
+            candidates.append(f"{name}, {dest_city}")
+    candidates.append(name.strip())
 
     bias_lat = bias.get("lat") if bias else None
     bias_lon = bias.get("lon") if bias else None
+
+    # 1. Exact Wikipedia GPS coordinates lookup (most accurate for landmarks)
+    for query in candidates:
+        hit = await _wikipedia_geocode(query, bias_lat=bias_lat, bias_lon=bias_lon)
+        if hit:
+            _geocode_cache_set(cache_key, hit)
+            return hit
 
     for query in candidates:
         hit = await _photon_geocode(query, lat=bias_lat, lon=bias_lon)
@@ -447,11 +607,17 @@ async def geocode_place(
                 if not results:
                     continue
                 hit = results[0]
+                result_lat, result_lon = float(hit["latitude"]), float(hit["longitude"])
+
+                if bias_lat is not None and bias_lon is not None:
+                    if _haversine_km(bias_lat, bias_lon, result_lat, result_lon) > 80.0:
+                        continue
+
                 result = {
                     "name": hit.get("name") or name,
                     "label": query,
-                    "lat": float(hit["latitude"]),
-                    "lon": float(hit["longitude"]),
+                    "lat": result_lat,
+                    "lon": result_lon,
                     "country": hit.get("country"),
                 }
                 _geocode_cache_set(cache_key, result)
@@ -462,8 +628,12 @@ async def geocode_place(
     for query in candidates:
         hit = await _nominatim_geocode(query)
         if hit:
+            if bias_lat is not None and bias_lon is not None:
+                if _haversine_km(bias_lat, bias_lon, hit["lat"], hit["lon"]) > 80.0:
+                    continue
             _geocode_cache_set(cache_key, hit)
             return hit
+            
     _geocode_cache_set(cache_key, None)
     return None
 
@@ -573,22 +743,55 @@ async def _route_leg(
     return await _osrm_leg(origin, dest, profile)
 
 
+def _clean_geocode_label(text: str) -> str:
+    """Strip noisy prefixes/suffixes and extract clean landmark names from activity descriptions."""
+    if not text:
+        return ""
+    # Remove leading common action verbs
+    text = re.sub(
+        r"^(visit|explore|tour of|morning:|afternoon:|evening at|enjoy|experience|head to|see|relax at|cross|attend|savor|sample|taste|walk to|walk across|stroll along|take a|ride the|discover)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    # Check if there is an explicit landmark pattern like "at [Landmark]" or "along [Landmark]" or "in [Landmark]"
+    at_match = re.search(r"(?:at|along|near|around|in)\s+([A-Z][a-zA-Z0-9\s]{2,30})", text)
+    if at_match:
+        extracted = at_match.group(1).strip()
+        extracted = re.sub(r"\s+(to|and|with|for|the).*$", "", extracted, flags=re.IGNORECASE).strip()
+        if len(extracted) >= 3:
+            return extracted
+
+    # Remove leading articles
+    text = re.sub(r"^the\s+", "", text, flags=re.IGNORECASE)
+    # Remove parenthetical notes
+    text = re.sub(r"\s*\(.*?\)", "", text)
+    # Remove descriptive trailing phrases
+    text = re.sub(r"\s+(pedestrian|suspension|bridge|ceremony|prayer|temple|ashram|market|steps|along|to explore|of|for|area|district|region).*$", "", text, flags=re.IGNORECASE)
+    return text.strip()
+
+
 def _activity_label(activity: Any) -> str:
     if isinstance(activity, str):
-        return activity.strip()
+        return _clean_geocode_label(activity)
     if isinstance(activity, dict):
-        return (
+        raw = (
             activity.get("location_name")
             or activity.get("title")
             or activity.get("name")
             or activity.get("activity")
             or ""
-        ).strip()
+        )
+        return _clean_geocode_label(raw)
     return ""
 
 
-def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, Any]:
-    """Deterministic route payload for offline / test runs."""
+def _stub_route_map(
+    destination: str,
+    days: list[dict[str, Any]],
+    lodging_anchor: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Deterministic route payload for offline / test runs with lodging anchor support."""
     base_lat, base_lon = 48.8566, 2.3522
     if "lisbon" in destination.lower():
         base_lat, base_lon = 38.7223, -9.1393
@@ -596,6 +799,8 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
         base_lat, base_lon = 28.6139, 77.2090
     elif "rishikesh" in destination.lower():
         base_lat, base_lon = 30.0869, 78.2676
+
+    hotel_name = (lodging_anchor or {}).get("name") or "Boutique Central Hotel"
 
     day_payloads: list[dict[str, Any]] = []
     total_km = 0.0
@@ -607,15 +812,27 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
         while len(labels) < 2:
             labels.append(f"Stop {len(labels) + 1}")
 
-        markers = []
+        # Start from lodging anchor, visit stops, return to lodging anchor
+        markers = [
+            {
+                "order": 1,
+                "name": hotel_name,
+                "lat": round(base_lat, 5),
+                "lon": round(base_lon, 5),
+                "time": "09:00",
+                "title": f"Depart {hotel_name}",
+                "is_lodging": True,
+            }
+        ]
         legs = []
+
         for j, label in enumerate(labels):
-            lat = base_lat + (i * 0.02) + (j * 0.008)
-            lon = base_lon + (i * 0.015) + (j * 0.01)
+            lat = base_lat + (i * 0.015) + ((j + 1) * 0.007)
+            lon = base_lon + (i * 0.012) + ((j + 1) * 0.008)
             time_val = acts[j].get("time") if j < len(acts) and isinstance(acts[j], dict) else ""
             markers.append(
                 {
-                    "order": j + 1,
+                    "order": j + 2,
                     "name": label,
                     "lat": round(lat, 5),
                     "lon": round(lon, 5),
@@ -624,9 +841,22 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
                 }
             )
 
+        # Return to lodging marker
+        markers.append(
+            {
+                "order": len(markers) + 1,
+                "name": hotel_name,
+                "lat": round(base_lat, 5),
+                "lon": round(base_lon, 5),
+                "time": "21:30",
+                "title": f"Return to {hotel_name}",
+                "is_lodging": True,
+            }
+        )
+
         for j in range(len(markers) - 1):
-            leg_km = round(0.8 + (j * 0.35), 2)
-            leg_min = max(8, round(leg_km * 12))
+            leg_km = round(0.7 + (j * 0.25), 2)
+            leg_min = max(7, round(leg_km * 11))
             legs.append(
                 {
                     "from": markers[j],
@@ -643,17 +873,6 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
             )
             total_km += leg_km
             total_min += leg_min
-            if j == 0 and isinstance(acts[0], dict):
-                acts[0]["cumulative_distance_km"] = 0.0
-            if j + 1 < len(acts) and isinstance(acts[j + 1], dict):
-                acts[j + 1]["cumulative_distance_km"] = round(
-                    sum(l["distance_km"] for l in legs), 2
-                )
-                acts[j + 1]["travel_from_prev"] = {
-                    "distance_km": leg_km,
-                    "duration_minutes": leg_min,
-                    "mode": "walking",
-                }
 
         day_km = round(sum(l["distance_km"] for l in legs), 2)
         day_min = sum(l["duration_minutes"] for l in legs)
@@ -665,6 +884,11 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
                 "color": _DAY_COLORS[i % len(_DAY_COLORS)],
                 "distance_km": day_km,
                 "duration_minutes": day_min,
+                "lodging_base": hotel_name,
+                "transit_friction": {
+                    "avg_leg_km": round(day_km / max(len(legs), 1), 2),
+                    "assessment": "High walkability — clustered within district (< 2 km legs).",
+                },
                 "markers": markers,
                 "legs": legs,
             }
@@ -674,6 +898,7 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
         "available": True,
         "source": "stub",
         "destination_center": {"name": destination, "lat": base_lat, "lon": base_lon},
+        "lodging_anchor": lodging_anchor or {"name": hotel_name},
         "totals": {
             "distance_km": round(total_km, 2),
             "duration_minutes": total_min,
@@ -688,7 +913,7 @@ def _stub_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, A
 def _fallback_route_map(
     destination: str, center: dict[str, Any], days: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Fast map when POI geocoding fails — pins stops near destination center."""
+    """Fast map when POI geocoding fails — scatters pins radially around the destination center."""
     base_lat, base_lon = center["lat"], center["lon"]
     day_payloads: list[dict[str, Any]] = []
     total_km = 0.0
@@ -701,8 +926,13 @@ def _fallback_route_map(
             continue
         markers = []
         for j, label in enumerate(labels):
-            lat = base_lat + (i * 0.015) + (j * 0.006)
-            lon = base_lon + (i * 0.012) + (j * 0.008)
+            # Pseudo-random but deterministic scatter
+            seed = (i * 7) + (j * 13)
+            angle = (seed * 47) % 360
+            dist_deg = 0.005 + ((seed % 10) * 0.001) # 500m to 1.5km spread
+            
+            lat = base_lat + dist_deg * math.cos(math.radians(angle))
+            lon = base_lon + dist_deg * math.sin(math.radians(angle))
             time_val = acts[j].get("time") if j < len(acts) and isinstance(acts[j], dict) else ""
             markers.append(
                 {
@@ -719,8 +949,9 @@ def _fallback_route_map(
             continue
         legs = []
         for j in range(len(markers) - 1):
-            leg_km = round(0.6 + j * 0.2, 2)
-            leg_min = max(5, round(leg_km * 10))
+            leg_km = _haversine_km(markers[j]["lat"], markers[j]["lon"], markers[j+1]["lat"], markers[j+1]["lon"])
+            leg_km = max(round(leg_km, 2), 0.1)
+            leg_min = max(5, round(leg_km * 12))
             legs.append(
                 {
                     "from": markers[j],
@@ -768,17 +999,22 @@ def _fallback_route_map(
     }
 
 
-async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[str, Any]:
+async def build_route_map(
+    destination: str,
+    days: list[dict[str, Any]],
+    lodging_anchor: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Geocode itinerary stops, compute leg distances/times, and build map geometry.
 
     Uses Photon geocoding (biased to destination), OpenRouteService routing
-    (with OSRM fallback), and enriches activities with travel metadata.
+    (with OSRM fallback), anchors daily circuits to the lodging base, and
+    evaluates transit friction.
     """
     from app.config import stubs_enabled
     from app.pipeline_log import api_end, api_start
 
     if stubs_enabled():
-        return _stub_route_map(destination, days)
+        return _stub_route_map(destination, days, lodging_anchor=lodging_anchor)
 
     t0 = api_start("RouteMap", "build", destination=destination.split(",")[0][:40], days=len(days))
     if not days:
@@ -792,6 +1028,14 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
         api_end("RouteMap", "build", t0, ok=False, reason="geocode dest failed")
         return {"available": False, "reason": f"Could not geocode destination {destination!r}"}
 
+    # Geocode lodging anchor if provided
+    lodging_point: dict[str, Any] | None = None
+    if lodging_anchor and lodging_anchor.get("name"):
+        hotel_q = lodging_anchor.get("address") or lodging_anchor["name"]
+        lodging_point = await geocode_place(hotel_q, destination, bias=center)
+        if not lodging_point:
+            lodging_point = await geocode_place(lodging_anchor["name"], destination, bias=center)
+
     unique_labels: list[str] = []
     seen_labels: set[str] = set()
     for day in days:
@@ -803,7 +1047,7 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
 
     geocode_cache: dict[str, dict[str, Any] | None] = {}
     _GEO_SEM = asyncio.Semaphore(6)
-    labels_to_geocode = unique_labels[:10]
+    labels_to_geocode = unique_labels[:12]
 
     async def _geocode_label(label: str) -> None:
         async with _GEO_SEM:
@@ -831,6 +1075,22 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
         markers: list[dict[str, Any]] = []
         marker_acts: list[dict[str, Any]] = []
 
+        # If lodging anchor is geocoded, begin day by departing from lodging anchor
+        if lodging_point:
+            hotel_name = lodging_anchor.get("name", "Lodging Base")
+            markers.append(
+                {
+                    "order": 1,
+                    "name": hotel_name,
+                    "label": hotel_name,
+                    "lat": lodging_point["lat"],
+                    "lon": lodging_point["lon"],
+                    "time": "09:00",
+                    "title": f"Depart {hotel_name}",
+                    "is_lodging": True,
+                }
+            )
+
         for act in acts:
             label = _activity_label(act)
             if not label:
@@ -852,6 +1112,22 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
             )
             if isinstance(act, dict):
                 marker_acts.append(act)
+
+        # If lodging anchor is present and day has activities, close circuit back to lodging anchor
+        if lodging_point and len(markers) > 1:
+            hotel_name = lodging_anchor.get("name", "Lodging Base")
+            markers.append(
+                {
+                    "order": len(markers) + 1,
+                    "name": hotel_name,
+                    "label": hotel_name,
+                    "lat": lodging_point["lat"],
+                    "lon": lodging_point["lon"],
+                    "time": "21:30",
+                    "title": f"Return to {hotel_name}",
+                    "is_lodging": True,
+                }
+            )
 
         if len(markers) < 2:
             continue
@@ -896,6 +1172,14 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
                     "mode": leg["mode"],
                 }
 
+        avg_leg = day_km / max(len(legs), 1)
+        max_leg = max((l["distance_km"] for l in legs), default=0.0)
+        assessment = (
+            "High walkability — clustered within district (< 3 km hops)."
+            if max_leg <= 5.0
+            else "Moderate transit — short transit/taxi hops between stops."
+        )
+
         day_payloads.append(
             {
                 "day_number": day.get("day_number") or day.get("day") or (i + 1),
@@ -904,12 +1188,20 @@ async def build_route_map(destination: str, days: list[dict[str, Any]]) -> dict[
                 "color": _DAY_COLORS[i % len(_DAY_COLORS)],
                 "distance_km": round(day_km, 2),
                 "duration_minutes": day_min,
+                "lodging_base": lodging_anchor.get("name") if lodging_anchor else None,
+                "transit_friction": {
+                    "avg_leg_km": round(avg_leg, 2),
+                    "max_leg_km": round(max_leg, 2),
+                    "assessment": assessment,
+                },
                 "markers": markers,
                 "legs": legs,
             }
         )
 
     if not day_payloads:
+        api_end("RouteMap", "build", t0, ok=True, mode="fallback")
+        return _fallback_route_map(destination, center, days)
         api_end("RouteMap", "build", t0, ok=True, mode="fallback")
         return _fallback_route_map(destination, center, days)
 
@@ -1263,60 +1555,6 @@ async def _wikipedia_direct_thumbnail(
     )
 
 
-async def _google_image_search(
-    query: str,
-    *,
-    activity_title: str,
-    location: str,
-    destination: str,
-) -> tuple[str, float, str] | None:
-    """Fallback: Google Custom Search JSON API (searchType=image)."""
-    from app.config import get_settings, stubs_enabled
-
-    settings = get_settings()
-    if not settings.google_api_key or not settings.google_cse_id:
-        return None
-
-    async with httpx.AsyncClient(timeout=14) as http:
-        try:
-            res = await http.get(
-                _GOOGLE_CSE_URL,
-                params={
-                    "key": settings.google_api_key,
-                    "cx": settings.google_cse_id,
-                    "q": query,
-                    "searchType": "image",
-                    "num": 5,
-                    "safe": "active",
-                    "imgSize": "large",
-                },
-            )
-            res.raise_for_status()
-            items = res.json().get("items") or []
-            candidates: list[tuple[str, float, str]] = []
-            for item in items:
-                url = item.get("link")
-                if not url:
-                    continue
-                label = " ".join(
-                    filter(
-                        None,
-                        [
-                            item.get("title"),
-                            item.get("snippet"),
-                            item.get("displayLink"),
-                        ],
-                    )
-                )
-                conf = _image_match_confidence(
-                    activity_title, location, label, destination
-                )
-                candidates.append((url, conf, "google"))
-            return _pick_best_image(candidates)
-        except (httpx.HTTPError, KeyError, TypeError, ValueError):
-            return None
-
-
 def _image_search_queries(
     activity_title: str,
     location: str,
@@ -1474,27 +1712,6 @@ async def fetch_activity_image(
                     destination=destination,
                 )
             )
-
-        if not best or best[1] < 0.65:
-            seen_g: set[str] = set()
-            google_queries = queries[:2] + [
-                f"{location or activity_title} {dest_city} landmark",
-                f"{location or activity_title} {dest_city} tourist attraction",
-            ]
-            for q in google_queries:
-                if q.lower() in seen_g:
-                    continue
-                seen_g.add(q.lower())
-                await consider(
-                    await _google_image_search(
-                        q,
-                        activity_title=activity_title,
-                        location=location,
-                        destination=destination,
-                    )
-                )
-                if best and best[1] >= 0.7:
-                    break
 
     if best and best[1] >= _MIN_IMAGE_CONFIDENCE:
         activity["image_confidence"] = best[1]

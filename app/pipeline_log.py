@@ -46,7 +46,9 @@ def _kv(**extra: Any) -> str:
 
 
 def setup_pipeline_logging() -> None:
-    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    from app.config import get_settings
+    settings = get_settings()
+    level_name = (settings.log_level or "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
     handler = logging.StreamHandler(sys.stdout)
@@ -76,6 +78,10 @@ def set_node(name: str | None) -> None:
 
 def flow(msg: str, **extra: Any) -> None:
     LOG.info("%s%s", msg, _kv(**extra))
+
+
+def mcp_flow(msg: str, **extra: Any) -> None:
+    LOG.info("MCP >> %s%s", msg, _kv(**extra))
 
 
 def http(method: str, path: str, *, status: int | None = None, ms: float | None = None, **extra: Any) -> None:
@@ -157,16 +163,19 @@ def startup_banner(settings: Any) -> None:
         f"google={'Y' if settings.google_api_key else 'N'}"
         f" tavily={'Y' if settings.tavily_api_key else 'N'}"
         f" serp={'Y' if settings.serpapi_key else 'N'}"
+        f" langsmith={'Y' if settings.langsmith_api_key or settings.langsmith_tracing else 'N'}"
+        f" rag={'Y' if settings.rag_enabled else 'N'}"
+        f" mcp={'Y' if getattr(settings, 'mcp_enabled', True) else 'N'}"
     )
     LOG.warning(
         "Wayfarer %s | model=%s | bg=%s | %s",
         mode,
         settings.gemini_model,
-        settings.graph_background if not os.environ.get("VERCEL") else False,
+        settings.graph_background if not getattr(settings, "is_vercel", False) else False,
         keys,
     )
     LOG.warning(
-        "Pipeline: POST /plan -> research -> planner -> review | "
+        "Pipeline: POST /plan -> research (RAG) -> planner (LodgingAnchor) -> review | "
         "POST /review approve -> finalize -> GET /final"
     )
 

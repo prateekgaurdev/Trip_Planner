@@ -189,6 +189,18 @@ Full interactive docs auto-generate at **`/docs`** (Swagger) and **`/redoc`**.
 | `GET`  | `/plan/{id}` | — | `200` current state + draft |
 | `POST` | `/plan/{id}/review` | `{action, feedback}` | `200` new state · `409` if not awaiting · `404` |
 | `GET`  | `/plan/{id}/final` | — | `200` final plan · `409` if not completed · `404` |
+| `GET`  | `/plan/{id}/pdf` | — | `200` Vector PDF itinerary download (via MCP) |
+| `GET`  | `/plan/{id}/calendar.ics` | — | `200` RFC 5545 iCalendar feed (via MCP) |
+| `GET`  | `/mcp/tools` | — | `200` Model Context Protocol tool discovery |
+| `POST` | `/auth/signup` | `UserSignupRequest` | `201 {access_token, token_type, user}` |
+| `POST` | `/auth/login` | `UserLoginRequest` | `200 {access_token, token_type, user}` |
+| `GET`  | `/auth/me` | — | `200 User profile (Bearer token)` |
+| `GET`  | `/community/trips` | `destination, tag, sort` | `200 Public community trips feed` |
+| `POST` | `/community/trips` | `CommunityTripCreateRequest` | `201 Published community trip` |
+| `GET`  | `/community/trips/{id}`| — | `200 Trip detail + structured reviews` |
+| `POST` | `/community/trips/{id}/reviews`| `CommunityReviewCreateRequest` | `201 Submitted review with pro tips` |
+| `POST` | `/community/trips/{id}/like`| — | `200 Toggle upvote / like` |
+| `POST` | `/community/trips/{id}/remix-ai`| `CommunityRemixRequest` | `200 AI synthesized community remix` |
 | `GET`  | `/health` | — | `200 {status:"ok"}` |
 
 **`PlanRequest`:** `destination` (str), `start_date`/`end_date` (ISO date),
@@ -206,17 +218,22 @@ last two.
 ```
 travel-planner/
 ├── app/
-│   ├── main.py            # FastAPI app + 4 endpoints (async, lifespan)
+│   ├── main.py            # FastAPI app + endpoints (async, lifespan)
 │   ├── graph.py           # build_graph() + AsyncSqliteSaver checkpointer
-│   ├── nodes.py           # 5 nodes incl. interrupt() HITL gate + router
+│   ├── nodes.py           # 5 nodes incl. interrupt() HITL gate + MCP calls
 │   ├── tools.py           # web_search, get_weather, allocate_budget, build_day_schedule
 │   ├── state.py           # TripState TypedDict (the graph's contract)
 │   ├── schemas.py         # Pydantic v2 request/response models
 │   ├── config.py          # pydantic-settings (.env driven)
+│   ├── mcp/
+│   │   ├── server.py      # Standalone FastMCP Travel Concierge server
+│   │   └── pdf_generator.py # Publication-grade vector PDF dossier generator
 │   └── services/
+│       ├── mcp_client.py  # Async MCP ClientManager (stdio IPC + stubs)
 │       ├── llm.py         # Gemini client + stub
 │       └── search.py      # Tavily client + stub
 ├── tests/test_e2e.py      # one e2e HITL round-trip (key-free, USE_STUBS)
+├── tests/test_mcp_client.py # MCP protocol & export tool tests
 ├── docs/architecture.png  # (optional) rendered diagram
 ├── .env.example
 ├── pyproject.toml

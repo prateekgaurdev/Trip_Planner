@@ -59,3 +59,43 @@ def test_build_selected_travel_empty():
     assert rec["has_picks"] is True
     assert len(rec["flights"]) >= 1
     assert len(rec["hotels"]) >= 1
+
+
+def test_pick_top_flights_deduplicates_identical_offers():
+    """Identical flights from the same airline must not produce duplicate cards."""
+    from app.services.travel_picks import pick_top_flights
+
+    flights = {
+        "available": True,
+        "offers": [
+            {"airlines": "IndiGo", "price": 31796, "stops": 0, "total_duration": 50, "route_iata": "DEL -> DED"},
+            {"airlines": "IndiGo", "price": 31796, "stops": 0, "total_duration": 50, "route_iata": "DEL -> DED"},
+            {"airlines": "Air India", "price": 29850, "stops": 0, "total_duration": 55, "route_iata": "DEL -> DED"},
+        ],
+    }
+    picks = pick_top_flights(flights, total_budget=100000, currency="INR", top_n=3)
+    assert len(picks) == 2  # The duplicate IndiGo must be deduplicated
+    airlines = [p["offer"]["airlines"] for p in picks]
+    assert "Air India" in airlines
+    assert "IndiGo" in airlines
+    # Air India is cheaper (₹29,850 vs ₹31,796) and non-stop, so it ranks as Top Pick
+    assert picks[0]["offer"]["airlines"] == "Air India"
+
+
+def test_pick_top_hotels_high_rating_over_cheap():
+    """High rating > cheap: a 4.6★ affordable hotel beats a 4.2★ unpriced hotel."""
+    hotels = {
+        "available": True,
+        "offers": [
+            {"name": "Lemon Tree Premier, Rishikesh", "price": None, "rating": 4.2, "reviews": 500},
+            {"name": "Hotel The Grace (A Luxury Accommodation)", "price": 2431, "rating": 4.6, "reviews": 120},
+            {"name": "Mokshda Premium Hotel & Restaurant", "price": 2954, "rating": 4.2, "reviews": 90},
+        ],
+    }
+    picks = pick_top_hotels(hotels, total_budget=50000, nights=3, top_n=3)
+    assert len(picks) == 3
+    # Top pick must be Hotel The Grace because 4.6★ > 4.2★
+    assert picks[0]["offer"]["name"] == "Hotel The Grace (A Luxury Accommodation)"
+    assert "Highest Rated" in picks[0]["label"] or "4.6" in picks[0]["label"]
+    # Lemon Tree Premier (unpriced) must be ranked 3rd behind verified bookable hotels
+    assert picks[2]["offer"]["name"] == "Lemon Tree Premier, Rishikesh"

@@ -89,6 +89,7 @@ def _parse_flight_offers(
             arr = last.get("arrival_airport") or {}
             dep_code = (dep.get("id") or dep_iata or "").upper()
             arr_code = (arr.get("id") or arr_iata or "").upper()
+            flight_number = first.get("flight_number") or ""
             airlines = ", ".join(
                 dict.fromkeys(leg.get("airline", "") for leg in legs if leg.get("airline"))
             )
@@ -97,6 +98,7 @@ def _parse_flight_offers(
                     "price": _extract_price(item.get("price")),
                     "total_duration": item.get("total_duration"),
                     "airlines": airlines,
+                    "flight_number": flight_number,
                     "departure": dep.get("name") or dep_name,
                     "departure_time": dep.get("time") or "",
                     "arrival": arr.get("name") or arr_name,
@@ -125,9 +127,16 @@ def _price_sort_key(offer: dict[str, Any]) -> float:
     return float("inf")
 
 
-def _parse_hotel_offers(data: dict[str, Any], limit: int = 8) -> list[dict[str, Any]]:
+def _parse_hotel_offers(data: dict[str, Any], limit: int = 12) -> list[dict[str, Any]]:
     offers: list[dict[str, Any]] = []
-    for item in (data.get("properties") or [])[:limit]:
+    seen_names: set[str] = set()
+    for item in data.get("properties") or []:
+        name = item.get("name") or "Hotel"
+        norm_name = re.sub(r"[^a-z0-9]", "", name.lower())
+        if norm_name in seen_names:
+            continue
+        seen_names.add(norm_name)
+
         rate = item.get("rate_per_night") or {}
         price = rate.get("lowest") or rate.get("extracted_lowest") or item.get("price")
         images = item.get("images") or []
@@ -136,7 +145,7 @@ def _parse_hotel_offers(data: dict[str, Any], limit: int = 8) -> list[dict[str, 
             thumb = images[0].get("thumbnail") or images[0].get("original_image")
         offers.append(
             {
-                "name": item.get("name") or "Hotel",
+                "name": name,
                 "price": price,
                 "rating": item.get("overall_rating") or item.get("rating"),
                 "reviews": item.get("reviews") or item.get("reviews_count"),
@@ -146,6 +155,8 @@ def _parse_hotel_offers(data: dict[str, Any], limit: int = 8) -> list[dict[str, 
                 "description": item.get("description") or "",
             }
         )
+        if len(offers) >= limit:
+            break
     return offers
 
 
@@ -367,21 +378,27 @@ async def search_flights(
         batches = [primary, secondary]
     else:
         batches = [primary]
-    seen: set[tuple[Any, ...]] = set()
+    seen: set[str] = set()
     for batch in batches:
         for offer in batch:
-            key = (
-                offer.get("route_iata"),
-                offer.get("price"),
-                offer.get("airlines"),
-                offer.get("departure_time"),
-            )
+            airline_key = (offer.get("airlines") or "flight").strip().lower()
+            route_key = (offer.get("route_iata") or "").strip().lower()
+            key = f"{airline_key}|{route_key}|{offer.get('price')}|{offer.get('total_duration')}|{offer.get('stops')}"
             if key in seen:
                 continue
             seen.add(key)
             offers.append(offer)
 
-    offers.sort(key=_price_sort_key)
+    # Sort flights: direct non-stop flights with lowest price first
+    def _sort_key(offer: dict[str, Any]) -> tuple[int, float, int]:
+        stops = int(offer.get("stops") or 0)
+        price_val = _price_sort_key(offer)
+        bucket_weight = 0 if offer.get("type") == "best flights" else 1
+        return (stops, price_val, bucket_weight)
+
+    offers.sort(key=_sort_key)
+    
+    top_offers = offers[:8]
 
     origin_airports = airport_records_for_codes(origin_codes[:2])
     dest_airports = airport_records_for_codes(dest_codes[:2])
@@ -406,7 +423,7 @@ async def search_flights(
         "outbound_date": outbound_date,
         "return_date": return_date,
         "currency": currency,
-        "offers": offers[:8],
+        "offers": top_offers,
     }
     set_cached("flights", cache_key, result)
     return result
@@ -529,3 +546,51 @@ async def fetch_travel_options(preferences: dict[str, Any]) -> dict[str, Any]:
     route = (flights or {}).get("resolved_route") if flights else None
     api_end("Travel", "fetch_options", t0, flights=flight_n, hotels=hotel_n, route=route or "-")
     return result
+
+
+async def search_nearby_restaurants(location_name: str, destination: str, meal: str = "Lunch") -> dict[str, str] | None:
+    """Finds the top restaurant near a specific location using SerpAPI google_local."""
+    from app.config import stubs_enabled
+    from app.pipeline_log import api_end, api_start
+    if stubs_enabled():
+        return {
+            "title": f"{meal} at Local Eatery",
+            "description": "A highly rated spot serving regional cuisine. · 4.5 (120 reviews)",
+            "location_name": f"{location_name} Area",
+            "time": "13:00" if meal.lower() == "lunch" else "19:00"
+        }
+
+    q = f"best restaurants near {location_name}, {destination}"
+    t0 = api_start("SerpAPI", "local", q=q[:40])
+    
+    data = await _serp_get({
+        "engine": "google_local",
+        "q": q,
+        "hl": "en",
+        "gl": "us",
+    })
+
+    if not data or not data.get("local_results"):
+        api_end("SerpAPI", "local", t0, ok=False, reason="no results")
+        return None
+
+    results = data.get("local_results", [])
+    if not results:
+        api_end("SerpAPI", "local", t0, ok=False, reason="empty local_results")
+        return None
+
+    top = results[0]
+    rating = str(top.get("rating", ""))
+    reviews = str(top.get("reviews", ""))
+    type_ = top.get("type", "Restaurant")
+    desc = f"{type_}"
+    if rating and reviews:
+        desc += f" · {rating} ({reviews} reviews)"
+
+    api_end("SerpAPI", "local", t0, found=top.get("title"))
+    return {
+        "title": f"{meal} at {top.get('title', 'Local Restaurant')}",
+        "description": desc,
+        "location_name": top.get("title", f"Restaurant near {location_name}"),
+        "time": "13:00" if meal.lower() == "lunch" else "19:00"
+    }

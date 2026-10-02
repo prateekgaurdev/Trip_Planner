@@ -1,0 +1,176 @@
+[
+  {
+    "title": "A Peaceful 4-Day Autumn Journey",
+    "destination": "Kyoto, Japan",
+    "summary": "A peaceful 4-day autumn journey through Kyoto's historic shrines, bamboo groves, and Nishiki Market. Focused on slow mornings and cultural depth.",
+    "origin": "Tokyo, Japan",
+    "duration_days": 4,
+    "budget": 1200,
+    "currency": "USD",
+    "travelers": 2,
+    "tags": ["Culture", "History", "Autumn", "Slow Pace"],
+    "author_name": "Elena Rostova",
+    "author_avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+    "lodging_anchor": {
+      "name": "Boutique Gion Ryokan",
+      "neighborhood": "Gion & Higashiyama",
+      "reason": "Authentic historic base with walking access to temples."
+    },
+    "days": [
+      {
+        "day_number": 1,
+        "title": "Arrival & Historic Higashiyama",
+        "neighborhood_cluster": "Higashiyama",
+        "activities": [
+          {"time": "14:00", "title": "Check-in at Boutique Gion Ryokan", "location_name": "Gion Ryokan", "description": "Settle in and drop bags at this historic ryokan.", "cost": 0, "category": "Lodging"},
+          {"time": "15:30", "title": "Kiyomizu-dera Wooden Terrace", "location_name": "Kiyomizu-dera", "description": "Visit the iconic temple in the late afternoon to avoid peak bus crowds.", "cost": 4, "category": "Landmark"},
+          {"time": "18:00", "title": "Lantern Walk through Ninenzaka & Sannenzaka", "location_name": "Ninenzaka", "description": "Beautiful evening walk when the shops close and the lanterns light up the stone streets.", "cost": 0, "category": "Culture"},
+          {"time": "20:00", "title": "Traditional Kaiseki Dinner in Pontocho Alley", "location_name": "Pontocho", "description": "An intimate multi-course dinner overlooking the Kamo River.", "cost": 85, "category": "Dining"}
+        ]
+      },
+      {
+        "day_number": 2,
+        "title": "Arashiyama Bamboo & Sagano Romance",
+        "neighborhood_cluster": "Arashiyama",
+        "activities": [
+          {"time": "08:30", "title": "Arashiyama Bamboo Grove Walk", "location_name": "Arashiyama Bamboo Grove", "description": "Arrive early before 9 AM to get photos without the massive crowds.", "cost": 0, "category": "Nature"},
+          {"time": "10:30", "title": "Tenryu-ji Zen Garden", "location_name": "Tenryu-ji", "description": "Explore the UNESCO world heritage landscape garden.", "cost": 5, "category": "Culture"},
+          {"time": "13:00", "title": "Tofu Feast overlooking Togetsukyo Bridge", "location_name": "Togetsukyo Bridge", "description": "Traditional Kyoto tofu lunch with river views.", "cost": 30, "category": "Dining"}
+        ]
+      }
+    ],
+    "likes_count": 142,
+    "reviews_count": 12,
+    "average_rating": 4.9
+  },
+  {
+    "title": "Spiritual Weekend in the Himalayas",
+    "destination": "Rishikesh, India",
+    "summary": "A revitalizing 3-day spiritual retreat by the Ganges. Combining morning yoga, ancient Beatles Ashram ruins, and evening Aarti ceremonies.",
+    "origin": "Delhi, India",
+    "duration_days": 3,
+    "budget": 15000,
+    "currency": "INR",
+    "travelers": 1,
+    "tags": ["Spiritual", "Yoga", "Solo", "Himalayas"],
+    "author_name": "Priya Patel",
+    "author_avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+    "lodging_anchor": {
+      "name": "Aloha on the Ganges",
+      "neighborhood": "Tapovan",
+      "reason": "Serene riverfront views with easy access to cafes and Laxman Jhula."
+    },
+    "days": [
+      {
+        "day_number": 1,
+        "title": "Arrival & Ganges Blessing",
+        "neighborhood_cluster": "Tapovan & Ghats",
+        "activities": [
+          {"time": "13:00", "title": "Check-in at Aloha on the Ganges", "location_name": "Tapovan", "description": "Unwind and take in the Himalayan breeze.", "cost": 0, "category": "Lodging"},
+          {"time": "15:00", "title": "Lunch at Little Buddha Cafe", "location_name": "Laxman Jhula", "description": "Popular treehouse-style cafe with great vegan options and river views.", "cost": 600, "category": "Dining"},
+          {"time": "17:15", "title": "Ganga Aarti at Triveni Ghat", "location_name": "Triveni Ghat", "description": "Arrive early to get a seat on the steps. A deeply moving spiritual fire ceremony.", "cost": 0, "category": "Spiritual"}
+        ]
+      },
+      {
+        "day_number": 2,
+        "title": "Ashram Ruins & Sacred Caves",
+        "neighborhood_cluster": "Swarg Ashram",
+        "activities": [
+          {"time": "09:30", "title": "Explore Beatles Ashram (Chaurasi Kutia)", "location_name": "Beatles Ashram", "description": "Walk through the historic ruins where the Beatles meditated in 1968.", "cost": 600, "category": "History"},
+          {"time": "14:00", "title": "Vashishta Gufa Meditation Cave", "location_name": "Vashishta Gufa", "description": "A very quiet, ancient cave an hour out of town. Highly spiritual and serene.", "cost": 0, "category": "Spiritual"},
+          {"time": "19:00", "title": "Ayurvedic Dinner", "location_name": "Tapovan", "description": "Healthy, sattvic food to end a spiritual day.", "cost": 800, "category": "Dining"}
+        ]
+      }
+    ],
+    "likes_count": 89,
+    "reviews_count": 8,
+    "average_rating": 4.8
+  },
+  {
+    "title": "Lisbon Culinary & Heritage Explorer",
+    "destination": "Lisbon, Portugal",
+    "summary": "A 5-day deep dive into Lisbon's culinary scene, Fado music, and maritime history, avoiding the steep tourist traps.",
+    "origin": "London, UK",
+    "duration_days": 5,
+    "budget": 950,
+    "currency": "EUR",
+    "travelers": 2,
+    "tags": ["Food", "History", "Couples", "City Break"],
+    "author_name": "Aarav Sharma",
+    "author_avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+    "lodging_anchor": {
+      "name": "Boutique Chiado Hotel",
+      "neighborhood": "Chiado & Baixa",
+      "reason": "Flat walking access to the metro and central to all major dining districts."
+    },
+    "days": [
+      {
+        "day_number": 1,
+        "title": "Alfama Labyrinth & Fado",
+        "neighborhood_cluster": "Alfama",
+        "activities": [
+          {"time": "14:00", "title": "Check-in at Chiado", "location_name": "Chiado", "description": "Drop bags and freshen up.", "cost": 0, "category": "Lodging"},
+          {"time": "16:00", "title": "São Jorge Castle Views", "location_name": "Castelo de S. Jorge", "description": "Take Tram 28 up, but walk down. Great golden hour views.", "cost": 15, "category": "Landmark"},
+          {"time": "20:00", "title": "Fado Dinner at Clube de Fado", "location_name": "Alfama", "description": "Traditional Portuguese dinner accompanied by live melancholic Fado singing.", "cost": 50, "category": "Culture"}
+        ]
+      },
+      {
+        "day_number": 2,
+        "title": "Belém Maritime History",
+        "neighborhood_cluster": "Belém",
+        "activities": [
+          {"time": "09:30", "title": "Jerónimos Monastery", "location_name": "Jerónimos Monastery", "description": "Buy tickets online beforehand to skip the massive 1-hour queue.", "cost": 10, "category": "History"},
+          {"time": "11:30", "title": "Pastéis de Belém", "location_name": "Belém", "description": "The original egg tart bakery. The line moves fast, don't be intimidated.", "cost": 5, "category": "Dining"},
+          {"time": "14:00", "title": "Belém Tower & Riverfront", "location_name": "Torre de Belém", "description": "Iconic defensive tower on the river tagus.", "cost": 6, "category": "Landmark"}
+        ]
+      }
+    ],
+    "likes_count": 215,
+    "reviews_count": 24,
+    "average_rating": 4.9
+  },
+  {
+    "title": "Delhi Heritage & Street Food Dash",
+    "destination": "Delhi, India",
+    "summary": "An action-packed 2 days focusing on Mughal architecture and the sensory overload of Old Delhi's food markets.",
+    "origin": "Mumbai, India",
+    "duration_days": 2,
+    "budget": 8000,
+    "currency": "INR",
+    "travelers": 2,
+    "tags": ["Food", "History", "Fast-Paced"],
+    "author_name": "Elena Rostova",
+    "author_avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+    "lodging_anchor": {
+      "name": "Connaught Place Heritage Stay",
+      "neighborhood": "Connaught Place",
+      "reason": "Central hub for the Metro Yellow Line, making travel to Old and South Delhi easy."
+    },
+    "days": [
+      {
+        "day_number": 1,
+        "title": "Mughal Majesty & Chandni Chowk",
+        "neighborhood_cluster": "Old Delhi",
+        "activities": [
+          {"time": "09:00", "title": "Red Fort (Lal Qila)", "location_name": "Red Fort", "description": "Go early before the heat and tour bus crowds.", "cost": 600, "category": "History"},
+          {"time": "11:30", "title": "Jama Masjid", "location_name": "Jama Masjid", "description": "Climb the minaret for an incredible view of the old city.", "cost": 300, "category": "Landmark"},
+          {"time": "13:30", "title": "Karim's Lunch in Old Delhi", "location_name": "Karim's", "description": "Legendary Mughlai food hidden in an alleyway near Jama Masjid.", "cost": 800, "category": "Dining"},
+          {"time": "15:30", "title": "Rickshaw through Chandni Chowk & Khari Baoli", "location_name": "Khari Baoli", "description": "Asia's largest spice market. Prepare for sensory overload and sneezing!", "cost": 200, "category": "Culture"}
+        ]
+      },
+      {
+        "day_number": 2,
+        "title": "South Delhi Gardens & Tombs",
+        "neighborhood_cluster": "South Delhi",
+        "activities": [
+          {"time": "10:00", "title": "Humayun's Tomb", "location_name": "Humayun's Tomb", "description": "The precursor to the Taj Mahal. Stunning red sandstone architecture.", "cost": 600, "category": "History"},
+          {"time": "13:00", "title": "Lunch at Khan Market", "location_name": "Khan Market", "description": "Upscale dining and boutique shopping.", "cost": 1500, "category": "Dining"},
+          {"time": "16:00", "title": "Sunset at Lodhi Gardens", "location_name": "Lodhi Gardens", "description": "A beautiful park scattered with 15th-century tombs where locals jog and relax.", "cost": 0, "category": "Nature"}
+        ]
+      }
+    ],
+    "likes_count": 67,
+    "reviews_count": 5,
+    "average_rating": 4.6
+  }
+]
