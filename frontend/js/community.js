@@ -170,7 +170,8 @@
       commGrid.innerHTML = trips.map((t) => {
         const destLower = (t.destination || '').toLowerCase();
         let coverImg = 'images/destinations/kyoto.jpg';
-        if (destLower.includes('rishikesh') || destLower.includes('india')) coverImg = 'images/destinations/rishikesh.jpg';
+        if (destLower.includes('delhi')) coverImg = 'images/destinations/delhi.jpg';
+        else if (destLower.includes('rishikesh')) coverImg = 'images/destinations/rishikesh.jpg';
         else if (destLower.includes('lisbon') || destLower.includes('portugal')) coverImg = 'images/destinations/lisbon.jpg';
         else if (destLower.includes('amalfi') || destLower.includes('italy')) coverImg = 'images/destinations/amalfi.jpg';
         else if (destLower.includes('paris') || destLower.includes('france')) coverImg = 'images/destinations/paris.jpg';
@@ -178,52 +179,50 @@
         else if (destLower.includes('santorini') || destLower.includes('greece')) coverImg = 'images/destinations/santorini.jpg';
         else if (destLower.includes('bali')) coverImg = 'images/destinations/bali.jpg';
 
-        const tagsHtml = (t.tags || []).map(tg => `<span class="comm-tag-badge">${esc(tg)}</span>`).join('');
+        const tagsHtml = (t.tags || []).slice(0, 2).map(tg => `<span class="comm-tag-mini">${esc(tg)}</span>`).join('');
         const authorAvatar = t.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.author_name)}&background=0d9488&color=fff`;
         const ratingNum = Number(t.average_rating || 5.0).toFixed(1);
         const likedClass = t.user_has_liked ? 'liked' : '';
-        const corridorHtml = t.origin ? `<span class="comm-chip"><i class="fa-solid fa-plane-departure"></i> ${esc(t.origin)} &rarr;</span>` : '';
         const tripUrl = `community-trip.html?id=${encodeURIComponent(t.id)}`;
 
         return `
-          <article class="comm-trip-card" data-trip-id="${esc(t.id)}" style="cursor:pointer;">
-            <div class="comm-card-cover-wrap">
-              <img src="${coverImg}" alt="${esc(t.destination)}" class="comm-cover-img" loading="lazy" />
-              <div class="comm-cover-scrim"></div>
-              <span class="comm-card-rating-badge"><span class="star-icon">★</span> ${ratingNum}</span>
-              <span class="comm-dest-pill"><i class="fa-solid fa-location-dot"></i> ${esc(t.destination)}</span>
+          <article class="comm-trip-card comm-card-squarish" data-trip-id="${esc(t.id)}" style="cursor:pointer;">
+            <!-- Embedded Full-Bleed Location Background Image -->
+            <div class="comm-card-bg-wrap">
+              <img src="${coverImg}" alt="${esc(t.destination)}" class="comm-card-bg-img" loading="lazy" />
+              <div class="comm-card-scrim"></div>
             </div>
 
-            <div class="comm-card-body">
-              <div class="comm-author-row">
-                <img src="${esc(authorAvatar)}" alt="${esc(t.author_name)}" class="comm-author-img" />
-                <div class="comm-author-text">
-                  <span class="comm-author-name">${esc(t.author_name)}</span>
-                  <span class="comm-author-badge"><i class="fa-solid fa-circle-check"></i> Verified Explorer</span>
-                </div>
+            <!-- Top Floating Badges Row -->
+            <div class="comm-card-top-row">
+              <span class="comm-dest-pill"><i class="fa-solid fa-location-dot"></i> ${esc(t.destination)}</span>
+              <span class="comm-card-rating-badge"><span class="star-icon">★</span> ${ratingNum}</span>
+            </div>
+
+            <!-- Bottom Content Overlay -->
+            <div class="comm-card-bottom-content">
+              <div class="comm-author-compact">
+                <img src="${esc(authorAvatar)}" alt="${esc(t.author_name)}" class="comm-author-tiny" />
+                <span class="comm-author-name">${esc(t.author_name)}</span>
+                <span class="comm-duration-chip">${t.duration_days}D / ${Math.max(1, t.duration_days - 1)}N</span>
               </div>
 
               <h3 class="comm-card-title"><a href="${tripUrl}">${esc(t.title)}</a></h3>
-              <p class="comm-card-desc">${esc(t.description || 'Curated multi-day itinerary with neighborhood-first spatial clustering.')}</p>
 
-              <div class="comm-card-meta-chips">
-                ${corridorHtml}
-                <span class="comm-chip"><i class="fa-solid fa-calendar-days"></i> ${t.duration_days} Days</span>
-                <span class="comm-chip"><i class="fa-solid fa-users"></i> ${t.travelers} Travelers</span>
-                ${t.budget ? `<span class="comm-chip"><i class="fa-solid fa-coins"></i> ${money(t.budget)} ${esc(t.currency)}</span>` : ''}
+              <div class="comm-meta-row">
+                ${t.budget ? `<span class="comm-budget-chip"><i class="fa-solid fa-coins"></i> ${money(t.budget)} ${esc(t.currency)}</span>` : ''}
+                <div class="comm-tags-mini">${tagsHtml}</div>
               </div>
 
-              <div class="comm-tags-list">${tagsHtml}</div>
-            </div>
-
-            <div class="comm-card-footer">
-              <div class="comm-stats-left">
-                <button type="button" class="comm-like-btn ${likedClass}" data-trip-id="${esc(t.id)}" title="Upvote this trip">
-                  <i class="fa-solid fa-heart"></i> <span class="like-cnt">${t.likes_count}</span>
-                </button>
-                <span class="comm-reviews-count"><i class="fa-solid fa-comments"></i> ${t.reviews_count} reviews</span>
+              <div class="comm-card-actions-bar">
+                <div class="comm-stats-group">
+                  <button type="button" class="comm-like-btn ${likedClass}" data-trip-id="${esc(t.id)}" title="Upvote this trip">
+                    <i class="fa-solid fa-heart"></i> <span class="like-cnt">${t.likes_count}</span>
+                  </button>
+                  <span class="comm-reviews-count"><i class="fa-solid fa-comments"></i> ${t.reviews_count}</span>
+                </div>
+                <span class="comm-explore-cta">Explore <i class="fa-solid fa-arrow-right"></i></span>
               </div>
-              <a href="${tripUrl}" class="btn btn-primary btn-sm btn-view-fullpage">Explore Journey &rarr;</a>
             </div>
           </article>
         `;

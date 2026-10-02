@@ -1184,7 +1184,7 @@ ${custom_notes}`.trim();
         toast('Plan was deleted or not found.', 'bad');
       }
     }
-    if (state.polling && state.status !== 'completed') {
+    if (state.polling && !['completed', 'error', 'failed'].includes(state.status)) {
       const delay = ['researching', 'planning', 'finalizing'].includes(state.status) ? POLL_MS : POLL_MS_IDLE;
       state.pollTimer = setTimeout(poll, delay);
     }
@@ -1286,6 +1286,16 @@ ${custom_notes}`.trim();
     setPipeline(status);
     showWorking(status, progress, statusChanged);
     saveSession({ preferences: data.preferences, destination: data.preferences?.destination });
+
+    if (status === 'error' || status === 'failed') {
+      stopPolling();
+      stopProgressAnim();
+      stopSSEStream();
+      setSubmitting(false);
+      els.workingBanner.style.display = 'none';
+      toast(data.error || data.message || 'An error occurred while generating your plan.', 'bad');
+      return;
+    }
 
     if (status === 'awaiting_review') {
       stopPolling();

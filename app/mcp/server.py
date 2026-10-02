@@ -29,11 +29,15 @@ from app.mcp.pdf_generator import build_itinerary_pdf
 
 logger = logging.getLogger("wayfarer.mcp_server")
 
-server = FastMCP(
-    name="wayfarer-travel-concierge",
-    version="1.0.0",
-    description="Wayfarer Travel Concierge MCP Server: PDF generation, calendar sync, travel advisories, and packing lists.",
-)
+try:
+    server = FastMCP(
+        name="wayfarer-travel-concierge",
+        version="1.0.0",
+        description="Wayfarer Travel Concierge MCP Server: PDF generation, calendar sync, travel advisories, and packing lists.",
+    )
+except TypeError:
+    # FastMCP in mcp 1.x only accepts the name argument
+    server = FastMCP("wayfarer-travel-concierge")
 
 # ─── Tool 1: Visual PDF Itinerary ─────────────────────────────────────────────
 @server.tool()
