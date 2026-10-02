@@ -81,8 +81,11 @@ class ChromaHybridRAGEngine:
                 self._bootstrap_from_json()
 
             self._chroma_ready = True
+        except ImportError:
+            # chromadb not installed in Python environment — silently use in-memory hybrid RAG
+            self._chroma_ready = False
         except Exception as exc:
-            logger.warning("ChromaDB init failed (%s); using in-memory hybrid fallback.", exc)
+            logger.debug("ChromaDB init skipped (%s); using in-memory hybrid.", exc)
             self._chroma_ready = False
 
 

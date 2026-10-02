@@ -64,8 +64,36 @@ def setup_pipeline_logging() -> None:
     LOG.addHandler(handler)
     LOG.propagate = False
 
-    for noisy in ("httpx", "httpcore", "google_genai", "google_genai.models", "urllib3"):
-        logging.getLogger(noisy).setLevel(logging.WARNING)
+    for noisy in ("httpx", "httpcore", "google_genai", "google_genai.models", "google.genai", "google.genai.models", "urllib3"):
+        logging.getLogger(noisy).setLevel(logging.ERROR)
+
+    apply_uvicorn_access_filter()
+
+
+class _UvicornNoisyAccessFilter(logging.Filter):
+    """Filter out noisy GET /plan/{id} polling, /health checks, /images/lookup, and /metrics from terminal output."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if "images/lookup" in msg or "/images/lookup" in msg:
+            return False
+        if "GET /health" in msg or "/health" in msg:
+            return False
+        if "GET /metrics" in msg or "/metrics" in msg:
+            return False
+        if "GET /plan/" in msg:
+            return False
+        return True
+
+
+def apply_uvicorn_access_filter() -> None:
+    """Attach filter to uvicorn.access logger and all its handlers to keep terminal clean."""
+    filt = _UvicornNoisyAccessFilter()
+    for name in ("uvicorn.access", "uvicorn", "uvicorn.error", ""):
+        log = logging.getLogger(name)
+        log.addFilter(filt)
+        for h in log.handlers:
+            h.addFilter(filt)
 
 
 def set_plan_id(plan_id: str | None) -> None:

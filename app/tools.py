@@ -563,6 +563,32 @@ async def _wikipedia_geocode(
     return None
 
 
+MAX_GEOCODE_DISTANCE_KM = 60.0
+
+
+async def _open_meteo_city_center(destination: str) -> dict[str, Any] | None:
+    """Get verified administrative coordinates for a destination city center."""
+    city = destination.split(",")[0].strip()
+    try:
+        async with httpx.AsyncClient(timeout=8) as http:
+            res = await http.get(_GEOCODE_URL, params={"name": city, "count": 3})
+            if res.status_code == 200:
+                results = res.json().get("results") or []
+                if results:
+                    best = results[0]
+                    return {
+                        "name": best.get("name") or city,
+                        "label": destination,
+                        "lat": float(best["latitude"]),
+                        "lon": float(best["longitude"]),
+                        "country": best.get("country"),
+                        "admin1": best.get("admin1"),
+                    }
+    except Exception:
+        pass
+    return None
+
+
 async def geocode_place(
     name: str,
     destination: str = "",
@@ -585,16 +611,50 @@ async def geocode_place(
     bias_lat = bias.get("lat") if bias else None
     bias_lon = bias.get("lon") if bias else None
 
+    # 0. CARTO Cloud MCP Enterprise Geocoding (Primary Provider with 60km Proximity Threshold)
+    from app.services.carto_mcp import get_carto_mcp_client
+    carto = get_carto_mcp_client()
+    if carto.is_configured:
+        for query in candidates:
+            try:
+                coords = await carto.geocode(query)
+                if coords:
+                    if bias_lat is not None and bias_lon is not None:
+                        dist = _haversine_km(bias_lat, bias_lon, coords[0], coords[1])
+                        if dist > MAX_GEOCODE_DISTANCE_KM:
+                            logger.info(
+                                "CARTO geocoded '%s' to (%.4f, %.4f), but it is %.1fkm from destination (>%.1fkm). Discarding false positive.",
+                                query, coords[0], coords[1], dist, MAX_GEOCODE_DISTANCE_KM
+                            )
+                            continue
+                    hit = {
+                        "name": name,
+                        "label": query,
+                        "lat": coords[0],
+                        "lon": coords[1],
+                        "provider": "CARTO (TomTom LDS)",
+                    }
+                    _geocode_cache_set(cache_key, hit)
+                    return hit
+            except Exception:
+                pass
+
     # 1. Exact Wikipedia GPS coordinates lookup (most accurate for landmarks)
     for query in candidates:
         hit = await _wikipedia_geocode(query, bias_lat=bias_lat, bias_lon=bias_lon)
         if hit:
+            if bias_lat is not None and bias_lon is not None:
+                if _haversine_km(bias_lat, bias_lon, hit["lat"], hit["lon"]) > MAX_GEOCODE_DISTANCE_KM:
+                    continue
             _geocode_cache_set(cache_key, hit)
             return hit
 
     for query in candidates:
         hit = await _photon_geocode(query, lat=bias_lat, lon=bias_lon)
         if hit:
+            if bias_lat is not None and bias_lon is not None:
+                if _haversine_km(bias_lat, bias_lon, hit["lat"], hit["lon"]) > MAX_GEOCODE_DISTANCE_KM:
+                    continue
             _geocode_cache_set(cache_key, hit)
             return hit
 
@@ -606,19 +666,19 @@ async def geocode_place(
                 results = res.json().get("results") or []
                 if not results:
                     continue
-                hit = results[0]
-                result_lat, result_lon = float(hit["latitude"]), float(hit["longitude"])
+                hit_raw = results[0]
+                result_lat, result_lon = float(hit_raw["latitude"]), float(hit_raw["longitude"])
 
                 if bias_lat is not None and bias_lon is not None:
-                    if _haversine_km(bias_lat, bias_lon, result_lat, result_lon) > 80.0:
+                    if _haversine_km(bias_lat, bias_lon, result_lat, result_lon) > MAX_GEOCODE_DISTANCE_KM:
                         continue
 
                 result = {
-                    "name": hit.get("name") or name,
+                    "name": hit_raw.get("name") or name,
                     "label": query,
                     "lat": result_lat,
                     "lon": result_lon,
-                    "country": hit.get("country"),
+                    "country": hit_raw.get("country"),
                 }
                 _geocode_cache_set(cache_key, result)
                 return result
@@ -629,7 +689,7 @@ async def geocode_place(
         hit = await _nominatim_geocode(query)
         if hit:
             if bias_lat is not None and bias_lon is not None:
-                if _haversine_km(bias_lat, bias_lon, hit["lat"], hit["lon"]) > 80.0:
+                if _haversine_km(bias_lat, bias_lon, hit["lat"], hit["lon"]) > MAX_GEOCODE_DISTANCE_KM:
                     continue
             _geocode_cache_set(cache_key, hit)
             return hit
@@ -736,7 +796,20 @@ async def _osrm_leg(
 async def _route_leg(
     origin: dict[str, Any], dest: dict[str, Any], profile: str
 ) -> dict[str, Any]:
-    """Route a leg — OpenRouteService first, then OSRM, then straight-line estimate."""
+    """Route a leg — CARTO TomTom MCP first (Primary), then OpenRouteService, then OSRM, then straight-line estimate."""
+    from app.services.carto_mcp import get_carto_mcp_client
+    carto = get_carto_mcp_client()
+    if carto.is_configured:
+        try:
+            p1 = (origin["lat"], origin["lon"])
+            p2 = (dest["lat"], dest["lon"])
+            mode = "pedestrian" if profile == "foot" else "car"
+            carto_leg = await carto.route(p1, p2, mode=mode)
+            if carto_leg:
+                return carto_leg
+        except Exception:
+            pass
+
     leg = await _ors_leg(origin, dest, profile)
     if leg:
         return leg
@@ -747,37 +820,50 @@ def _clean_geocode_label(text: str) -> str:
     """Strip noisy prefixes/suffixes and extract clean landmark names from activity descriptions."""
     if not text:
         return ""
-    # Remove leading common action verbs
-    text = re.sub(
-        r"^(visit|explore|tour of|morning:|afternoon:|evening at|enjoy|experience|head to|see|relax at|cross|attend|savor|sample|taste|walk to|walk across|stroll along|take a|ride the|discover)\s+",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
-    # Check if there is an explicit landmark pattern like "at [Landmark]" or "along [Landmark]" or "in [Landmark]"
-    at_match = re.search(r"(?:at|along|near|around|in)\s+([A-Z][a-zA-Z0-9\s]{2,30})", text)
+    raw = text.strip()
+
+    # 1. If text contains an explicit landmark preposition pattern, extract the proper noun
+    at_match = re.search(r"(?:at|along|near|around|in|across|to)\s+([A-Z][a-zA-Z0-9\s'’-]{2,35}?(?:Temple|Ghat|Ashram|Bridge|Fort|Palace|Market|Beach|Garden|Museum|Tower|Cave|Falls|Lake|Park|Quarter|Alley|Square|Junction)?)", raw)
     if at_match:
         extracted = at_match.group(1).strip()
-        extracted = re.sub(r"\s+(to|and|with|for|the).*$", "", extracted, flags=re.IGNORECASE).strip()
-        if len(extracted) >= 3:
+        extracted = re.sub(r"\s+(to|and|with|for|the|sampling|offering|viewing|enjoying).*$", "", extracted, flags=re.IGNORECASE).strip()
+        if 2 <= len(extracted.split()) <= 5 and len(extracted) >= 3:
             return extracted
 
+    # 2. Remove leading common action verbs
+    cleaned = re.sub(
+        r"^(visit|explore|tour of|morning:|afternoon:|evening at|enjoy|experience|head to|see|relax at|cross|attend|savor|sample|taste|walk to|walk across|stroll along|take a|ride the|discover)\s+",
+        "",
+        raw,
+        flags=re.IGNORECASE,
+    ).strip()
+
     # Remove leading articles
-    text = re.sub(r"^the\s+", "", text, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^the\s+", "", cleaned, flags=re.IGNORECASE).strip()
     # Remove parenthetical notes
-    text = re.sub(r"\s*\(.*?\)", "", text)
-    # Remove descriptive trailing phrases
-    text = re.sub(r"\s+(pedestrian|suspension|bridge|ceremony|prayer|temple|ashram|market|steps|along|to explore|of|for|area|district|region).*$", "", text, flags=re.IGNORECASE)
-    return text.strip()
+    cleaned = re.sub(r"\s*\(.*?\)", "", cleaned).strip()
+
+    # Prevent long sentence queries from confusing geocoders
+    words = cleaned.split()
+    if len(words) > 5:
+        cleaned = " ".join(words[:4])
+
+    return cleaned.strip()
 
 
 def _activity_label(activity: Any) -> str:
     if isinstance(activity, str):
         return _clean_geocode_label(activity)
     if isinstance(activity, dict):
+        # Prioritize explicit location_name / location first
+        loc = activity.get("location_name") or activity.get("location")
+        if loc and len(loc.strip()) >= 2:
+            clean_loc = _clean_geocode_label(loc)
+            if clean_loc:
+                return clean_loc
+
         raw = (
-            activity.get("location_name")
-            or activity.get("title")
+            activity.get("title")
             or activity.get("name")
             or activity.get("activity")
             or ""
@@ -1021,20 +1107,25 @@ async def build_route_map(
         api_end("RouteMap", "build", t0, ok=False, reason="no days")
         return {"available": False, "reason": "No itinerary days to map."}
 
-    center = await geocode_place(destination)
+    # Resolve destination city center using administrative hierarchy
+    center = await _open_meteo_city_center(destination)
+    if not center:
+        center = await geocode_place(destination)
     if not center:
         center = await geocode_place(destination.split(",")[0])
     if not center:
         api_end("RouteMap", "build", t0, ok=False, reason="geocode dest failed")
         return {"available": False, "reason": f"Could not geocode destination {destination!r}"}
 
-    # Geocode lodging anchor if provided
+    # Geocode lodging anchor if provided, fallback to destination center if unlocated
     lodging_point: dict[str, Any] | None = None
     if lodging_anchor and lodging_anchor.get("name"):
         hotel_q = lodging_anchor.get("address") or lodging_anchor["name"]
         lodging_point = await geocode_place(hotel_q, destination, bias=center)
         if not lodging_point:
             lodging_point = await geocode_place(lodging_anchor["name"], destination, bias=center)
+    if not lodging_point:
+        lodging_point = center
 
     unique_labels: list[str] = []
     seen_labels: set[str] = set()
@@ -1076,8 +1167,8 @@ async def build_route_map(
         marker_acts: list[dict[str, Any]] = []
 
         # If lodging anchor is geocoded, begin day by departing from lodging anchor
+        hotel_name = lodging_anchor.get("name", "Hotel Base") if lodging_anchor else "Hotel Base"
         if lodging_point:
-            hotel_name = lodging_anchor.get("name", "Lodging Base")
             markers.append(
                 {
                     "order": 1,
@@ -1085,7 +1176,7 @@ async def build_route_map(
                     "label": hotel_name,
                     "lat": lodging_point["lat"],
                     "lon": lodging_point["lon"],
-                    "time": "09:00",
+                    "time": "09:00 AM",
                     "title": f"Depart {hotel_name}",
                     "is_lodging": True,
                 }
@@ -1113,9 +1204,8 @@ async def build_route_map(
             if isinstance(act, dict):
                 marker_acts.append(act)
 
-        # If lodging anchor is present and day has activities, close circuit back to lodging anchor
+        # Close circuit back to lodging anchor as the final stop
         if lodging_point and len(markers) > 1:
-            hotel_name = lodging_anchor.get("name", "Lodging Base")
             markers.append(
                 {
                     "order": len(markers) + 1,
@@ -1123,7 +1213,7 @@ async def build_route_map(
                     "label": hotel_name,
                     "lat": lodging_point["lat"],
                     "lon": lodging_point["lon"],
-                    "time": "21:30",
+                    "time": "09:30 PM",
                     "title": f"Return to {hotel_name}",
                     "is_lodging": True,
                 }
@@ -1207,7 +1297,7 @@ async def build_route_map(
 
     from app.config import get_settings
     settings = get_settings()
-    routing = "openrouteservice+osrm" if settings.openrouteservice_api_key else "osrm"
+    routing = "carto_mcp+openrouteservice" if settings.carto_api_key else ("openrouteservice+osrm" if settings.openrouteservice_api_key else "osrm")
 
     totals = {
         "distance_km": round(total_km, 2),
@@ -1215,6 +1305,7 @@ async def build_route_map(
         "legs": total_legs,
         "days": len(day_payloads),
         "stops": sum(len(d["markers"]) for d in day_payloads),
+        "spatial_provider": "CARTO Cloud Platform (TomTom LDS)" if settings.carto_api_key else "Photon+OSRM",
     }
     api_end(
         "RouteMap",
@@ -1226,7 +1317,8 @@ async def build_route_map(
     )
     return {
         "available": True,
-        "source": f"photon+{routing}",
+        "source": f"carto_mcp+{routing}" if settings.carto_api_key else f"photon+{routing}",
+        "spatial_provider": "CARTO Cloud Platform (TomTom LDS)" if settings.carto_api_key else "Photon+OSRM",
         "destination_center": center,
         "totals": totals,
         "days": day_payloads,

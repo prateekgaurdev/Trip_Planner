@@ -300,7 +300,26 @@ class StubLLM:
                         "date": "2026-09-10",
                         "focus": "flexible",
                         "neighborhood_cluster": "Historic Old Town",
-                        "activities": ["Historic old town walking area", "Renowned local food market"],
+                        "activities": [
+                            {
+                                "time": "09:30 AM",
+                                "title": "Historic Old Town Walking Area",
+                                "description": "Explore cobbled lanes, historic architecture, and artisan shops starting from your lodging base.",
+                                "location_name": "Historic Old Town",
+                                "opening_hours": "08:00 AM – 08:00 PM",
+                                "estimated_cost": "Free",
+                                "estimated_duration": "2.5 hrs"
+                            },
+                            {
+                                "time": "01:00 PM",
+                                "title": "Renowned Local Food Market",
+                                "description": "Sample regional specialties, fresh pastries, and authentic street food.",
+                                "location_name": "Local Food Market",
+                                "opening_hours": "09:00 AM – 06:00 PM",
+                                "estimated_cost": "$25 USD",
+                                "estimated_duration": "1.5 hrs"
+                            }
+                        ],
                         "weather_note": "Mild and dry — ideal for walking",
                     },
                     {
@@ -308,7 +327,26 @@ class StubLLM:
                         "date": "2026-09-11",
                         "focus": "indoor",
                         "neighborhood_cluster": "Riverside District",
-                        "activities": ["Scenic riverside park", "City museum"],
+                        "activities": [
+                            {
+                                "time": "10:00 AM",
+                                "title": "Scenic Riverside Park",
+                                "description": "Stroll along the waterfront promenade and enjoy panoramic city views.",
+                                "location_name": "Riverside Park",
+                                "opening_hours": "Open 24/7",
+                                "estimated_cost": "Free",
+                                "estimated_duration": "2 hrs"
+                            },
+                            {
+                                "time": "03:00 PM",
+                                "title": "City Museum of Art & History",
+                                "description": "Explore rich local art collections and historical exhibitions.",
+                                "location_name": "City Museum",
+                                "opening_hours": "10:00 AM – 06:00 PM",
+                                "estimated_cost": "$12 entry",
+                                "estimated_duration": "2.5 hrs"
+                            }
+                        ],
                         "weather_note": "Favorable afternoon conditions",
                     },
                 ],

@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <link rel="stylesheet" href="css/style.css?v=7" />
+  <link rel="stylesheet" href="css/style.css?v=14" />
 </head>
 <body>
   <!-- ─── Top navigation ───────────────────────────────────────── -->
@@ -70,9 +70,10 @@
                 <label for="origin">FROM / ORIGIN</label>
               </div>
               <div class="input-wrap no-border">
-                <input type="text" id="origin" name="origin" placeholder="e.g. Delhi, India" class="big-input" />
+                <input type="text" id="origin" name="origin" placeholder="e.g. Delhi, India" class="big-input" autocomplete="off" />
               </div>
               <span class="segment-sub">Airport or transit hub</span>
+              <div class="autocomplete-dropdown" id="origin-suggestions" hidden></div>
             </div>
             
             <!-- TO POD -->
@@ -82,9 +83,10 @@
                 <label for="destination">TO / DESTINATION</label>
               </div>
               <div class="input-wrap no-border">
-                <input type="text" id="destination" name="destination" placeholder="e.g. Rishikesh, India" required minlength="2" class="big-input" />
+                <input type="text" id="destination" name="destination" placeholder="e.g. Rishikesh, India" required minlength="2" class="big-input" autocomplete="off" />
               </div>
               <span class="segment-sub">City, country or region</span>
+              <div class="autocomplete-dropdown" id="destination-suggestions" hidden></div>
             </div>
             
             <!-- DATES POD -->
@@ -112,18 +114,12 @@
             <!-- TRAVELERS & BUDGET POD -->
             <div class="console-segment bordered-left pod-budget">
               <div class="pod-header">
-                <span class="pod-icon"><i class="fa-solid fa-wallet"></i></span>
-                <label>TRAVELERS &amp; BUDGET</label>
-              </div>
-              <div class="traveler-budget-row">
-                <div class="tb-stepper" title="Number of travelers">
-                  <i class="fa-solid fa-user-group"></i>
-                  <input type="number" id="travelers" name="travelers" value="2" min="1" max="20" required class="tb-num-input" />
+                <div class="pod-header-left">
+                  <span class="pod-icon"><i class="fa-solid fa-wallet"></i></span>
+                  <label>TRAVELERS &amp; BUDGET</label>
                 </div>
-                <div class="budget-input-group">
-                  <span class="currency-symbol">$</span>
-                  <input type="number" id="budget" name="budget" placeholder="2500" min="1" step="50" required class="budget-num-input" />
-                  <select id="currency" name="currency" class="currency-dropdown" required>
+                <div class="currency-picker-wrap">
+                  <select id="currency" name="currency" class="currency-dropdown" required title="Select currency">
                     <option value="USD" selected>USD ($)</option>
                     <option value="EUR">EUR (&euro;)</option>
                     <option value="GBP">GBP (&pound;)</option>
@@ -132,6 +128,17 @@
                     <option value="AUD">AUD ($)</option>
                     <option value="CAD">CAD ($)</option>
                   </select>
+                </div>
+              </div>
+              <div class="traveler-budget-row">
+                <div class="tb-stepper" title="Number of travelers">
+                  <i class="fa-solid fa-user-group"></i>
+                  <input type="number" id="travelers" name="travelers" value="2" min="1" max="20" required class="tb-num-input" />
+                  <span class="tb-stepper-label">Guest<span id="tb-plural">s</span></span>
+                </div>
+                <div class="budget-input-group" title="Enter total budget">
+                  <span class="currency-symbol" id="currency-symbol-display">$</span>
+                  <input type="number" id="budget" name="budget" placeholder="2500" min="1" step="50" required class="budget-num-input" />
                 </div>
               </div>
               <span class="segment-sub">Total trip budget</span>
@@ -660,11 +667,6 @@
   <!-- Toast container -->
   <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="js/api.js?v=3"></script>
-  <script src="js/maps.js?v=3"></script>
-  <script src="js/app.js?v=3"></script>
-
   <!-- ─── Slide-Out Drawer (Right) ────────────────────────────── -->
   <div class="drawer-overlay" id="drawer-overlay"></div>
   <aside class="side-drawer" id="side-drawer">
@@ -771,5 +773,9 @@
     </div>
   </div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="js/api.js?v=14"></script>
+  <script src="js/maps.js?v=14"></script>
+  <script src="js/app.js?v=14"></script>
 </body>
 </html>

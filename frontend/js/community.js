@@ -77,8 +77,18 @@
     }
   }
 
-  openAuthBtn?.addEventListener('click', () => { if (authModal) authModal.hidden = false; });
-  authClose?.addEventListener('click', () => { if (authModal) authModal.hidden = true; });
+  openAuthBtn?.addEventListener('click', () => {
+    if (authModal) {
+      authModal.hidden = false;
+      document.body.classList.add('modal-open');
+    }
+  });
+  authClose?.addEventListener('click', () => {
+    if (authModal) {
+      authModal.hidden = true;
+      document.body.classList.remove('modal-open');
+    }
+  });
 
   tabLogin?.addEventListener('click', () => {
     tabLogin.classList.add('active');
@@ -290,11 +300,27 @@
   const remixResult = document.getElementById('comm-remix-result');
   let _activeModalTripId = null;
 
-  commClose?.addEventListener('click', () => { if (commModal) commModal.hidden = true; });
+  commClose?.addEventListener('click', () => {
+    if (commModal) {
+      commModal.hidden = true;
+      document.body.classList.remove('modal-open');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (commModal) commModal.hidden = true;
+      if (authModal) authModal.hidden = true;
+      document.body.classList.remove('modal-open');
+    }
+  });
 
   async function openCommunityTripModal(tripId) {
     _activeModalTripId = tripId;
-    if (commModal) commModal.hidden = false;
+    if (commModal) {
+      commModal.hidden = false;
+      document.body.classList.add('modal-open');
+    }
     if (remixResult) { remixResult.hidden = true; remixResult.innerHTML = ''; }
     if (commHead) commHead.innerHTML = '<div style="padding:20px; text-align:center;"><span class="spinner"></span> Loading itinerary...</div>';
     if (commItin) commItin.innerHTML = '';

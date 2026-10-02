@@ -341,12 +341,14 @@ async def planner_agent(state: TripState) -> dict[str, Any]:
             system=(
                 "You are an expert itinerary planner producing a precise, review-ready draft.\n"
                 "CRITICAL ARCHITECTURAL CONSTRAINTS:\n"
-                "1. LODGING ANCHOR PATTERN: Accommodation is a persistent state base, NOT a repeated hourly activity. "
-                "The traveler departs from the lodging anchor in the morning and returns in the evening. "
-                "DO NOT schedule 'Stay at Hotel' or mid-day check-in/out as activities.\n"
-                "2. GEOGRAPHIC CLUSTERING: Each day MUST be strictly clustered around a single geographic district or adjacent neighborhood. "
-                "Group attractions that are within 15-20 minutes walking or short transit of each other. Never schedule morning activities on one side of a city and afternoon activities on the other.\n"
-                "3. Use REAL venue and landmark names (e.g. 'Parmarth Niketan', 'São Jorge Castle'). Respect exact trip dates.\n"
+                "1. LODGING ANCHOR PATTERN: Accommodation is a persistent state base. "
+                "EVERY SINGLE DAY MUST BEGIN WITH MORNING DEPARTURE FROM THE HOTEL (or Day 1 arrival check-in) "
+                "AND MUST CLOSE THE DAILY CIRCUIT BY ENDING WITH RETURNING TO THE HOTEL IN THE EVENING (e.g. '09:30 PM - Return to Hotel').\n"
+                "2. 12-HOUR AM/PM TIMINGS & RICH CONTENT: Use clean 12-hour format (e.g. '09:00 AM', '11:30 AM', '02:00 PM', '05:30 PM', '08:00 PM', '09:30 PM'). "
+                "For every activity, provide an engaging 2-3 sentence description explaining the experience, what to order/see, practical tips, opening hours, duration, and cost.\n"
+                "3. GEOGRAPHIC CLUSTERING: Each day MUST be strictly clustered around a single geographic district or adjacent neighborhood. "
+                "Group attractions within 15-20 minutes walking or short transit of each other.\n"
+                "4. Use REAL venue and landmark names (e.g. 'Parmarth Niketan', 'São Jorge Castle'). Respect exact trip dates.\n"
                 f"{corridor_instructions}"
                 f"{custom_vision_instructions}"
             ),
@@ -389,6 +391,25 @@ async def planner_agent(state: TripState) -> dict[str, Any]:
             "return_departure_tip": f"Check out of {lodging_anchor.get('name', 'hotel')} and allow 2.5 hours transfer time before departure.",
             "grounded_route_facts": [c["content"][:120] for c in corridor_chunks[:2]],
         }
+
+    # Enrich Journey Corridor with closest airport and distance calculations
+    if origin and journey_corridor:
+        from app.services.places_suggest import suggest_places
+        if not journey_corridor.get("departure_airport"):
+            orig_sugg = suggest_places(origin, limit=1)
+            if orig_sugg:
+                o_item = orig_sugg[0]
+                d_km = o_item.get("distance_km", 0)
+                d_text = f" · {d_km} km from center" if d_km > 0 else " · Direct Airport Hub"
+                journey_corridor["departure_airport"] = f"{o_item.get('closest_airport_name', 'Airport')} ({o_item.get('iata', '')}){d_text}"
+        if not journey_corridor.get("arrival_airport"):
+            dest_sugg = suggest_places(dest, limit=1)
+            if dest_sugg:
+                d_item = dest_sugg[0]
+                d_km = d_item.get("distance_km", 0)
+                d_text = f" · {d_km} km transfer" if d_km > 0 else " · Direct Airport Hub"
+                journey_corridor["arrival_airport"] = f"{d_item.get('closest_airport_name', 'Airport')} ({d_item.get('iata', '')}){d_text}"
+                journey_corridor["arrival_airport_distance_km"] = d_km
 
     if not schedule:
         schedule = build_day_schedule(

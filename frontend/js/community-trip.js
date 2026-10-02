@@ -84,8 +84,25 @@
     }
   }
 
-  openAuthBtn?.addEventListener('click', () => { if (authModal) authModal.hidden = false; });
-  authClose?.addEventListener('click', () => { if (authModal) authModal.hidden = true; });
+  openAuthBtn?.addEventListener('click', () => {
+    if (authModal) {
+      authModal.hidden = false;
+      document.body.classList.add('modal-open');
+    }
+  });
+  authClose?.addEventListener('click', () => {
+    if (authModal) {
+      authModal.hidden = true;
+      document.body.classList.remove('modal-open');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && authModal) {
+      authModal.hidden = true;
+      document.body.classList.remove('modal-open');
+    }
+  });
 
   tabLogin?.addEventListener('click', () => {
     tabLogin.classList.add('active');

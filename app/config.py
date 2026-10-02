@@ -44,8 +44,13 @@ class Settings(BaseSettings):
     # SerpAPI — optional flight & hotel price discovery (Google Flights / Google Hotels)
     serpapi_key: str = ""
     
-    # CARTO API Key for basemap tiles
+    # CARTO Cloud Platform & Spatial Intelligence (Primary Enterprise Provider)
     carto_api_key: str = ""
+    carto_base_url: str = "https://gcp-us-east1.api.carto.com"
+    carto_account_id: str = "ac_5v2ld53m"
+    carto_mcp_url: str = "https://gcp-us-east1.api.carto.com/mcp/ac_5v2ld53m"
+    carto_routing_enabled: bool = True
+    carto_geocoding_enabled: bool = True
 
     # LangSmith Observability & Tracing (optional, zero-overhead if unset)
     langsmith_tracing: bool = False
@@ -130,5 +135,7 @@ def get_settings() -> Settings:
 def stubs_enabled() -> bool:
     """Stubs are test-only — never used when running the real server."""
     if os.environ.get("PYTEST_CURRENT_TEST"):
+        if os.environ.get("USE_STUBS") == "true":
+            return True
         return get_settings().use_stubs
     return False

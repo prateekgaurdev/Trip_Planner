@@ -43,3 +43,13 @@ def test_langsmith_config_sync(monkeypatch):
     assert os.environ.get("LANGCHAIN_TRACING_V2") == "true"
     assert os.environ.get("LANGCHAIN_API_KEY") == "lsv2_pt_test_key_123"
     assert os.environ.get("LANGCHAIN_PROJECT") == "test-project"
+
+
+def test_metrics_endpoint():
+    """Verify /metrics returns 200 with Prometheus/telemetry data."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    assert "wayfarer_up" in resp.text

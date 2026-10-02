@@ -72,6 +72,9 @@ _graph_init_lock = asyncio.Lock()
 async def lifespan(app: FastAPI):
     """Open the checkpointer-backed graph once for the app's lifetime."""
     setup_pipeline_logging()
+    from app.pipeline_log import apply_uvicorn_access_filter
+    apply_uvicorn_access_filter()
+
     get_settings.cache_clear()
     settings = get_settings()
     startup_banner(settings)
@@ -124,9 +127,14 @@ async def unhandled_exception_handler(request, exc: Exception):
 
 @app.middleware("http")
 async def log_requests(request, call_next):
-    """Log API traffic — polls at DEBUG to avoid terminal spam."""
+    """Log API traffic — polls and image lookups suppressed to avoid terminal spam."""
     path = request.url.path
-    if path.startswith("/css") or path.startswith("/js") or path.endswith((".css", ".js", ".svg", ".png", ".ico")):
+    if (
+        path.startswith("/css")
+        or path.startswith("/js")
+        or path.startswith("/images/lookup")
+        or path.endswith((".css", ".js", ".svg", ".png", ".ico", ".jpg", ".avif"))
+    ):
         return await call_next(request)
 
     import time
@@ -136,9 +144,10 @@ async def log_requests(request, call_next):
     ms = (time.perf_counter() - t0) * 1000
 
     is_poll = request.method == "GET" and path.startswith("/plan/") and path.count("/") == 2
-    if is_poll:
+    is_health = path in ("/health", "/metrics")
+    if is_poll or is_health:
         pipeline_log.debug("HTTP GET %s → %s (%.0fms)", path, response.status_code, ms)
-    elif path.startswith(("/plan", "/health")):
+    elif path.startswith("/plan"):
         log_http(request.method, path, status=response.status_code, ms=ms)
     return response
 
@@ -233,6 +242,43 @@ async def health() -> dict[str, Any]:
         "database_configured": bool(settings.database_url),
         "database_type": "postgres" if (not stubs_enabled() and settings.database_url.startswith(("postgres://", "postgresql://"))) else "sqlite",
     }
+
+
+@app.get("/metrics", tags=["meta"])
+async def metrics(request: Request) -> Response:
+    """Prometheus & telemetry metrics endpoint for monitoring agents, extensions, and scrapers."""
+    settings = get_settings()
+
+    # Plaintext Prometheus format by default or if requested by scraper
+    accept = request.headers.get("accept", "")
+    if "application/json" not in accept or "text/plain" in accept or "*/*" in accept or not accept:
+        body = (
+            "# HELP wayfarer_up Whether Wayfarer travel service is healthy (1 = up)\n"
+            "# TYPE wayfarer_up gauge\n"
+            "wayfarer_up 1\n"
+            "# HELP wayfarer_rag_enabled RAG status (1 = enabled)\n"
+            "# TYPE wayfarer_rag_enabled gauge\n"
+            f"wayfarer_rag_enabled {1 if settings.rag_enabled else 0}\n"
+            "# HELP wayfarer_mcp_enabled MCP protocol status (1 = enabled)\n"
+            "# TYPE wayfarer_mcp_enabled gauge\n"
+            f"wayfarer_mcp_enabled {1 if getattr(settings, 'mcp_enabled', True) else 0}\n"
+            "# HELP wayfarer_carto_enabled CARTO spatial AI status (1 = enabled)\n"
+            "# TYPE wayfarer_carto_enabled gauge\n"
+            f"wayfarer_carto_enabled {1 if settings.carto_api_key else 0}\n"
+        )
+        return Response(content=body, media_type="text/plain; version=0.0.4")
+
+    # Otherwise return JSON telemetry
+    return JSONResponse(
+        content={
+            "status": "ok",
+            "service": "Wayfarer AI Travel Planner",
+            "model": settings.gemini_model,
+            "rag_enabled": settings.rag_enabled,
+            "mcp_enabled": getattr(settings, "mcp_enabled", True),
+            "carto_spatial_enabled": bool(settings.carto_api_key),
+        }
+    )
 
 
 @app.post("/images/lookup", response_model=ActivityImageLookupResponse, tags=["images"])
@@ -729,6 +775,13 @@ async def place_replace(req: PlaceReplaceRequest) -> PlaceReplaceResponse:
     llm = GeminiClient()
     parsed = await llm.complete_json(system_prompt, user_prompt, PlaceReplaceResponse)
     return PlaceReplaceResponse(**parsed)
+
+
+@app.get("/places/suggest", tags=["places"])
+async def get_places_suggest(q: str = "", type: str = "all", limit: int = 8) -> list[dict[str, Any]]:
+    """Return autocomplete suggestions for locations with closest airport and distance in km."""
+    from app.services.places_suggest import suggest_places
+    return suggest_places(q, for_type=type, limit=limit)
 
 
 # ─── Supabase Authentication Endpoints ────────────────────────────────

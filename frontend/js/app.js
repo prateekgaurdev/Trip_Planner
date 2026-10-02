@@ -318,6 +318,28 @@
   if (els.form.start_date) els.form.start_date.addEventListener('change', updateNightCounter);
   if (els.form.end_date) els.form.end_date.addEventListener('change', updateNightCounter);
 
+  // ─── Currency & Traveler Display Logic ─────────────────────────
+  const CURR_SYMBOLS = { 'USD': '$', 'EUR': '€', 'GBP': '£', 'INR': '₹', 'JPY': '¥', 'AUD': '$', 'CAD': '$' };
+  function updateCurrencySymbolDisplay() {
+    const symEl = document.getElementById('currency-symbol-display');
+    if (!symEl || !els.form.currency) return;
+    const c = String(els.form.currency.value || 'USD').trim().toUpperCase();
+    symEl.textContent = CURR_SYMBOLS[c] || '$';
+  }
+  function updateTravelerPlural() {
+    const pluralEl = document.getElementById('tb-plural');
+    if (!pluralEl || !els.form.travelers) return;
+    const v = parseInt(els.form.travelers.value, 10);
+    pluralEl.textContent = v === 1 ? '' : 's';
+  }
+  if (els.form.currency) {
+    els.form.currency.addEventListener('change', updateCurrencySymbolDisplay);
+  }
+  if (els.form.travelers) {
+    els.form.travelers.addEventListener('input', updateTravelerPlural);
+    els.form.travelers.addEventListener('change', updateTravelerPlural);
+  }
+
   // ─── UX Pacing & Themes ─────────────────────────────────────────
   let _selectedPace = 'Balanced';
   const _selectedThemes = new Set();
@@ -738,363 +760,7 @@ ${custom_notes}`.trim();
               toast(fallbackErr.message || 'Failed to create plan.', 'bad');
               setSubmitting(false);
             }
-          
-  // ─── Slide-Out Drawer Logic (Chat / Replace) ───────────────────────
-  const elsDrawer = {
-    overlay: document.getElementById('drawer-overlay'),
-    drawer: document.getElementById('side-drawer'),
-    closeBtn: document.getElementById('drawer-close'),
-    img: document.getElementById('drawer-img'),
-    title: document.getElementById('drawer-title'),
-    loc: document.getElementById('drawer-loc'),
-    body: document.getElementById('drawer-body'),
-    chatFooter: document.getElementById('drawer-footer-chat'),
-    chatInput: document.getElementById('chat-input-box'),
-    chatSendBtn: document.getElementById('chat-send-btn')
-  };
-
-  let _drawerContext = null;
-
-  function closeDrawer() {
-    if (elsDrawer.overlay) elsDrawer.overlay.classList.remove('open');
-    if (elsDrawer.drawer) elsDrawer.drawer.classList.remove('open');
-    _drawerContext = null;
-  }
-
-  if (elsDrawer.closeBtn) elsDrawer.closeBtn.addEventListener('click', closeDrawer);
-  if (elsDrawer.overlay) elsDrawer.overlay.addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDrawer();
-  });
-
-  // Extract activity from plan state
-  function getActivityData(dayNum, idx) {
-    const finalPlan = pickPlan(state.data);
-    if (!finalPlan || !finalPlan.days) return null;
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == dayNum);
-    if (!day || !day.activities || !day.activities[idx]) return null;
-    const act = day.activities[idx];
-    
-    let title = ''; let locationName = ''; let time = ''; let desc = ''; let category = '';
-    if (typeof act === 'string') {
-      title = act.trim();
-    } else {
-      time = act.time || act.start || act.when || act.period || '';
-      title = (act.title || act.name || act.activity || act.label || '').trim();
-      locationName = (act.location_name || act.location || extractLandmarkKeyword(title) || title).trim();
-      desc = act.description || act.detail || act.notes || '';
-      category = act.category || '';
-    }
-    
-    const searchTarget = locationName || title;
-    const imgKey = activityImageKey(title, searchTarget);
-    const imgSrc = _imageStore.get(imgKey) || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=480&q=80';
-    
-    return { title, locationName, time, desc, category, searchTarget, imgSrc, actObj: act, dayNum, idx };
-  }
-
-  // Get all existing places across itinerary
-  function getExistingPlaces() {
-    const places = [];
-    const finalPlan = pickPlan(state.data);
-    if (!finalPlan || !finalPlan.days) return places;
-    
-    finalPlan.days.forEach(day => {
-      if (!day.activities) return;
-      day.activities.forEach(act => {
-        let title = '';
-        if (typeof act === 'string') title = act.trim();
-        else title = (act.title || act.name || act.activity || act.label || '').trim();
-        if (title) places.push(title);
-      });
-    });
-    return places;
-  }
-
-  // Delegate clicks for hover actions
-  els.itinerary.addEventListener('click', (e) => {
-    const btn = e.target.closest('.action-btn');
-    if (!btn) return;
-    
-    const action = btn.dataset.action;
-    const dayNum = parseInt(btn.dataset.day, 10);
-    const idx = parseInt(btn.dataset.idx, 10);
-    
-    const actData = getActivityData(dayNum, idx);
-    if (!actData) return;
-    
-    if (action === 'remove') {
-      handleRemove(actData);
-    } else if (action === 'replace') {
-      openReplaceDrawer(actData);
-    } else if (action === 'chat') {
-      openChatDrawer(actData);
-    }
-  });
-
-  // Handle Remove
-  let _lastRemoved = null; // For undo
-  function handleRemove(actData) {
-    const finalPlan = pickPlan(state.data);
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
-    
-    // Save for undo
-    _lastRemoved = {
-      dayNum: actData.dayNum,
-      idx: actData.idx,
-      actObj: day.activities[actData.idx]
-    };
-    
-    // Remove from array
-    day.activities.splice(actData.idx, 1);
-    
-    // Update UI
-    toast(`Removed ${esc(actData.title)} from Day ${actData.dayNum}. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
-    
-    loadFinal(false); // Re-render itinerary and map
-  }
-  
-  window.undoRemove = function() {
-    if (!_lastRemoved) return;
-    const finalPlan = pickPlan(state.data);
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == _lastRemoved.dayNum);
-    if (day) {
-      day.activities.splice(_lastRemoved.idx, 0, _lastRemoved.actObj);
-      _lastRemoved = null;
-      toast('Activity restored.', 'ok');
-      loadFinal(false);
-    }
-  };
-
-  // Open Chat Drawer
-  function openChatDrawer(actData) {
-    _drawerContext = { type: 'chat', data: actData, history: [] };
-    
-    elsDrawer.img.src = actData.imgSrc;
-    elsDrawer.title.textContent = actData.title;
-    const dest = (pickPlan(state.data).destination || els.wsDestination.textContent || '').split(',')[0].trim();
-    elsDrawer.loc.textContent = dest;
-    
-    elsDrawer.chatFooter.hidden = false;
-    
-    // Initial UI state
-    elsDrawer.body.innerHTML = `
-      <div class="vibe-badges">
-        <span class="vibe-badge">Loading Vibes...</span>
-      </div>
-      <div class="chat-stream" id="chat-stream">
-        <div class="chat-bubble chat-ai">
-          Hi! I'm your local insider for ${esc(actData.title)}. What would you like to know about the vibe, crowd, or tips?
-        </div>
-      </div>
-      <div class="chat-chips" id="chat-chips">
-        <button class="chat-chip" data-query="Is it good for a date night?">Is it good for a date night?</button>
-        <button class="chat-chip" data-query="What is the dress code?">What is the dress code?</button>
-        <button class="chat-chip" data-query="Are vegan options available?">Are vegan options available?</button>
-        <button class="chat-chip" data-query="What's the crowd like?">What's the crowd like?</button>
-      </div>
-    `;
-    
-    elsDrawer.overlay.classList.add('open');
-    elsDrawer.drawer.classList.add('open');
-    elsDrawer.chatInput.focus();
-  }
-
-  // Handle sending chat messages
-  async function sendChatMessage(query) {
-    if (!query || !_drawerContext || _drawerContext.type !== 'chat') return;
-    
-    const stream = document.getElementById('chat-stream');
-    const chipsDiv = document.getElementById('chat-chips');
-    
-    // Add user message
-    stream.innerHTML += `<div class="chat-bubble chat-user">${esc(query)}</div>`;
-    elsDrawer.chatInput.value = '';
-    chipsDiv.innerHTML = ''; // Clear chips while loading
-    elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
-    
-    // Add loading indicator
-    const loadingId = 'loading-' + Date.now();
-    stream.innerHTML += `<div class="chat-bubble chat-ai" id="${loadingId}"><i class="fa-solid fa-circle-notch fa-spin"></i> Getting the vibe...</div>`;
-    elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
-    
-    const actData = _drawerContext.data;
-    const payload = {
-      place_name: actData.title,
-      destination: pickPlan(state.data).destination || '',
-      query: query,
-      description: actData.desc,
-      category: actData.category,
-      chat_history: _drawerContext.history
-    };
-    
-    // Append to history for next time
-    _drawerContext.history.push({ role: 'user', content: query });
-    
-    try {
-      const res = await WayfarerAPI.chatPlace(payload);
-      
-      // Update vibe tags in header if provided
-      if (res.vibe_tags && res.vibe_tags.length) {
-        const badgesHtml = res.vibe_tags.map(t => `<span class="vibe-badge">${esc(t)}</span>`).join('');
-        const badgeContainer = elsDrawer.body.querySelector('.vibe-badges');
-        if (badgeContainer) badgeContainer.innerHTML = badgesHtml;
-      }
-      
-      // Replace loading bubble with AI response
-      const loader = document.getElementById(loadingId);
-      if (loader) loader.outerHTML = `<div class="chat-bubble chat-ai">${esc(res.reply)}</div>`;
-      
-      _drawerContext.history.push({ role: 'assistant', content: res.reply });
-      
-      // Update quick chips
-      if (res.suggested_followups && res.suggested_followups.length) {
-        chipsDiv.innerHTML = res.suggested_followups.map(q => `<button class="chat-chip" data-query="${esc(q)}">${esc(q)}</button>`).join('');
-      }
-      
-      elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
-    } catch (err) {
-      console.error("Chat error", err);
-      const loader = document.getElementById(loadingId);
-      if (loader) loader.outerHTML = `<div class="chat-bubble chat-ai" style="color:var(--bad);">Failed to fetch vibe. Please try again.</div>`;
-    }
-  }
-
-  if (elsDrawer.chatSendBtn) {
-    elsDrawer.chatSendBtn.addEventListener('click', () => sendChatMessage(elsDrawer.chatInput.value.trim()));
-  }
-  if (elsDrawer.chatInput) {
-    elsDrawer.chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(elsDrawer.chatInput.value.trim()); }
-    });
-  }
-  // Delegate clicks for chat chips
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('chat-chip')) {
-      sendChatMessage(e.target.dataset.query);
-    }
-  });
-
-  // Open Replace Drawer
-  function openReplaceDrawer(actData) {
-    _drawerContext = { type: 'replace', data: actData };
-    
-    elsDrawer.img.src = actData.imgSrc;
-    elsDrawer.title.textContent = `Replacing: ${actData.title}`;
-    elsDrawer.loc.textContent = `Day ${actData.dayNum} · ${actData.time}`;
-    
-    elsDrawer.chatFooter.hidden = true;
-    
-    elsDrawer.body.innerHTML = `
-      <div class="replace-search-box">
-        <button type="button" class="replace-preprompt" id="btn-preprompt">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> Suggest me some alternatives
-        </button>
-        <div class="replace-or">or</div>
-        <div class="chat-input-area" style="padding:0; border:none; border-radius:999px;">
-          <input type="text" id="replace-input" placeholder="e.g. cozy riverside cafe..." autocomplete="off" />
-          <button type="button" class="chat-send-btn" id="replace-search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
-        </div>
-      </div>
-      <div id="replace-results" style="display:flex; flex-direction:column; gap:16px;"></div>
-    `;
-    
-    elsDrawer.overlay.classList.add('open');
-    elsDrawer.drawer.classList.add('open');
-    
-    document.getElementById('btn-preprompt').addEventListener('click', () => doReplaceSearch(''));
-    document.getElementById('replace-search-btn').addEventListener('click', () => {
-      const val = document.getElementById('replace-input').value.trim();
-      if (val) doReplaceSearch(val);
-    });
-    document.getElementById('replace-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const val = e.target.value.trim();
-        if (val) doReplaceSearch(val);
-      }
-    });
-  }
-
-  async function doReplaceSearch(pref) {
-    const resDiv = document.getElementById('replace-results');
-    resDiv.innerHTML = `<div style="text-align:center; padding: 40px; color: var(--brand-ink);"><i class="fa-solid fa-circle-notch fa-spin fa-2x"></i><p style="margin-top:10px;font-weight:600;">Finding unique alternatives...</p></div>`;
-    
-    const actData = _drawerContext.data;
-    const payload = {
-      current_place: actData.title,
-      destination: pickPlan(state.data).destination || '',
-      time_slot: actData.time || 'Daytime',
-      day_number: actData.dayNum,
-      user_preference: pref,
-      existing_places: getExistingPlaces()
-    };
-    
-    try {
-      const res = await WayfarerAPI.replacePlace(payload);
-      
-      if (!res.alternatives || !res.alternatives.length) {
-        resDiv.innerHTML = `<p style="text-align:center; color:var(--bad);">No alternatives found. Try a different request.</p>`;
-        return;
-      }
-      
-      // Store globally for the swap button to access
-      window._replaceAlts = res.alternatives;
-      
-      let html = '';
-      res.alternatives.forEach((alt, i) => {
-        html += `
-          <div class="alt-card">
-            <div class="alt-header">
-              <div>
-                <h4 class="alt-title">${esc(alt.title)}</h4>
-                <div class="alt-loc">${esc(alt.location_name)}</div>
-              </div>
-              <div class="alt-cost">${money(alt.estimated_cost)}</div>
-            </div>
-            <p class="alt-desc">${esc(alt.description)}</p>
-            <button type="button" class="btn-swap" data-alt-idx="${i}">Swap This In</button>
-          </div>
-        `;
-      });
-      resDiv.innerHTML = html;
-      
-    } catch (err) {
-      console.error(err);
-      resDiv.innerHTML = `<p style="text-align:center; color:var(--bad);">Failed to fetch alternatives. Ensure API is running.</p>`;
-    }
-  }
-
-  // Handle Swap Click
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('btn-swap')) {
-      const idx = parseInt(e.target.dataset.altIdx, 10);
-      const alt = window._replaceAlts[idx];
-      if (!alt || !_drawerContext || _drawerContext.type !== 'replace') return;
-      
-      const actData = _drawerContext.data;
-      const finalPlan = pickPlan(state.data);
-      const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
-      
-      // Perform the swap
-      const newAct = {
-        title: alt.title,
-        location_name: alt.location_name,
-        time: alt.time || actData.time,
-        description: alt.description,
-        cost: alt.estimated_cost,
-        category: alt.category
-      };
-      day.activities[actData.idx] = newAct;
-      
-      closeDrawer();
-      toast(`Swapped in ${esc(alt.title)}!`, 'ok');
-      loadFinal(false); // Re-render itinerary and map
-    }
-  });
-
-
-})();
+          })();
         },
         () => { state.sseHandle = null; }, // onDone
       );
@@ -1545,363 +1211,7 @@ ${custom_notes}`.trim();
               setPipeline('awaiting_review');
               showWorking('awaiting_review', 'Draft ready — pick optional flight/hotel, then approve.', true);
             }
-          
-  // ─── Slide-Out Drawer Logic (Chat / Replace) ───────────────────────
-  const elsDrawer = {
-    overlay: document.getElementById('drawer-overlay'),
-    drawer: document.getElementById('side-drawer'),
-    closeBtn: document.getElementById('drawer-close'),
-    img: document.getElementById('drawer-img'),
-    title: document.getElementById('drawer-title'),
-    loc: document.getElementById('drawer-loc'),
-    body: document.getElementById('drawer-body'),
-    chatFooter: document.getElementById('drawer-footer-chat'),
-    chatInput: document.getElementById('chat-input-box'),
-    chatSendBtn: document.getElementById('chat-send-btn')
-  };
-
-  let _drawerContext = null;
-
-  function closeDrawer() {
-    if (elsDrawer.overlay) elsDrawer.overlay.classList.remove('open');
-    if (elsDrawer.drawer) elsDrawer.drawer.classList.remove('open');
-    _drawerContext = null;
-  }
-
-  if (elsDrawer.closeBtn) elsDrawer.closeBtn.addEventListener('click', closeDrawer);
-  if (elsDrawer.overlay) elsDrawer.overlay.addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDrawer();
-  });
-
-  // Extract activity from plan state
-  function getActivityData(dayNum, idx) {
-    const finalPlan = pickPlan(state.data);
-    if (!finalPlan || !finalPlan.days) return null;
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == dayNum);
-    if (!day || !day.activities || !day.activities[idx]) return null;
-    const act = day.activities[idx];
-    
-    let title = ''; let locationName = ''; let time = ''; let desc = ''; let category = '';
-    if (typeof act === 'string') {
-      title = act.trim();
-    } else {
-      time = act.time || act.start || act.when || act.period || '';
-      title = (act.title || act.name || act.activity || act.label || '').trim();
-      locationName = (act.location_name || act.location || extractLandmarkKeyword(title) || title).trim();
-      desc = act.description || act.detail || act.notes || '';
-      category = act.category || '';
-    }
-    
-    const searchTarget = locationName || title;
-    const imgKey = activityImageKey(title, searchTarget);
-    const imgSrc = _imageStore.get(imgKey) || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=480&q=80';
-    
-    return { title, locationName, time, desc, category, searchTarget, imgSrc, actObj: act, dayNum, idx };
-  }
-
-  // Get all existing places across itinerary
-  function getExistingPlaces() {
-    const places = [];
-    const finalPlan = pickPlan(state.data);
-    if (!finalPlan || !finalPlan.days) return places;
-    
-    finalPlan.days.forEach(day => {
-      if (!day.activities) return;
-      day.activities.forEach(act => {
-        let title = '';
-        if (typeof act === 'string') title = act.trim();
-        else title = (act.title || act.name || act.activity || act.label || '').trim();
-        if (title) places.push(title);
-      });
-    });
-    return places;
-  }
-
-  // Delegate clicks for hover actions
-  els.itinerary.addEventListener('click', (e) => {
-    const btn = e.target.closest('.action-btn');
-    if (!btn) return;
-    
-    const action = btn.dataset.action;
-    const dayNum = parseInt(btn.dataset.day, 10);
-    const idx = parseInt(btn.dataset.idx, 10);
-    
-    const actData = getActivityData(dayNum, idx);
-    if (!actData) return;
-    
-    if (action === 'remove') {
-      handleRemove(actData);
-    } else if (action === 'replace') {
-      openReplaceDrawer(actData);
-    } else if (action === 'chat') {
-      openChatDrawer(actData);
-    }
-  });
-
-  // Handle Remove
-  let _lastRemoved = null; // For undo
-  function handleRemove(actData) {
-    const finalPlan = pickPlan(state.data);
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
-    
-    // Save for undo
-    _lastRemoved = {
-      dayNum: actData.dayNum,
-      idx: actData.idx,
-      actObj: day.activities[actData.idx]
-    };
-    
-    // Remove from array
-    day.activities.splice(actData.idx, 1);
-    
-    // Update UI
-    toast(`Removed ${esc(actData.title)} from Day ${actData.dayNum}. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
-    
-    loadFinal(false); // Re-render itinerary and map
-  }
-  
-  window.undoRemove = function() {
-    if (!_lastRemoved) return;
-    const finalPlan = pickPlan(state.data);
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == _lastRemoved.dayNum);
-    if (day) {
-      day.activities.splice(_lastRemoved.idx, 0, _lastRemoved.actObj);
-      _lastRemoved = null;
-      toast('Activity restored.', 'ok');
-      loadFinal(false);
-    }
-  };
-
-  // Open Chat Drawer
-  function openChatDrawer(actData) {
-    _drawerContext = { type: 'chat', data: actData, history: [] };
-    
-    elsDrawer.img.src = actData.imgSrc;
-    elsDrawer.title.textContent = actData.title;
-    const dest = (pickPlan(state.data).destination || els.wsDestination.textContent || '').split(',')[0].trim();
-    elsDrawer.loc.textContent = dest;
-    
-    elsDrawer.chatFooter.hidden = false;
-    
-    // Initial UI state
-    elsDrawer.body.innerHTML = `
-      <div class="vibe-badges">
-        <span class="vibe-badge">Loading Vibes...</span>
-      </div>
-      <div class="chat-stream" id="chat-stream">
-        <div class="chat-bubble chat-ai">
-          Hi! I'm your local insider for ${esc(actData.title)}. What would you like to know about the vibe, crowd, or tips?
-        </div>
-      </div>
-      <div class="chat-chips" id="chat-chips">
-        <button class="chat-chip" data-query="Is it good for a date night?">Is it good for a date night?</button>
-        <button class="chat-chip" data-query="What is the dress code?">What is the dress code?</button>
-        <button class="chat-chip" data-query="Are vegan options available?">Are vegan options available?</button>
-        <button class="chat-chip" data-query="What's the crowd like?">What's the crowd like?</button>
-      </div>
-    `;
-    
-    elsDrawer.overlay.classList.add('open');
-    elsDrawer.drawer.classList.add('open');
-    elsDrawer.chatInput.focus();
-  }
-
-  // Handle sending chat messages
-  async function sendChatMessage(query) {
-    if (!query || !_drawerContext || _drawerContext.type !== 'chat') return;
-    
-    const stream = document.getElementById('chat-stream');
-    const chipsDiv = document.getElementById('chat-chips');
-    
-    // Add user message
-    stream.innerHTML += `<div class="chat-bubble chat-user">${esc(query)}</div>`;
-    elsDrawer.chatInput.value = '';
-    chipsDiv.innerHTML = ''; // Clear chips while loading
-    elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
-    
-    // Add loading indicator
-    const loadingId = 'loading-' + Date.now();
-    stream.innerHTML += `<div class="chat-bubble chat-ai" id="${loadingId}"><i class="fa-solid fa-circle-notch fa-spin"></i> Getting the vibe...</div>`;
-    elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
-    
-    const actData = _drawerContext.data;
-    const payload = {
-      place_name: actData.title,
-      destination: pickPlan(state.data).destination || '',
-      query: query,
-      description: actData.desc,
-      category: actData.category,
-      chat_history: _drawerContext.history
-    };
-    
-    // Append to history for next time
-    _drawerContext.history.push({ role: 'user', content: query });
-    
-    try {
-      const res = await WayfarerAPI.chatPlace(payload);
-      
-      // Update vibe tags in header if provided
-      if (res.vibe_tags && res.vibe_tags.length) {
-        const badgesHtml = res.vibe_tags.map(t => `<span class="vibe-badge">${esc(t)}</span>`).join('');
-        const badgeContainer = elsDrawer.body.querySelector('.vibe-badges');
-        if (badgeContainer) badgeContainer.innerHTML = badgesHtml;
-      }
-      
-      // Replace loading bubble with AI response
-      const loader = document.getElementById(loadingId);
-      if (loader) loader.outerHTML = `<div class="chat-bubble chat-ai">${esc(res.reply)}</div>`;
-      
-      _drawerContext.history.push({ role: 'assistant', content: res.reply });
-      
-      // Update quick chips
-      if (res.suggested_followups && res.suggested_followups.length) {
-        chipsDiv.innerHTML = res.suggested_followups.map(q => `<button class="chat-chip" data-query="${esc(q)}">${esc(q)}</button>`).join('');
-      }
-      
-      elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
-    } catch (err) {
-      console.error("Chat error", err);
-      const loader = document.getElementById(loadingId);
-      if (loader) loader.outerHTML = `<div class="chat-bubble chat-ai" style="color:var(--bad);">Failed to fetch vibe. Please try again.</div>`;
-    }
-  }
-
-  if (elsDrawer.chatSendBtn) {
-    elsDrawer.chatSendBtn.addEventListener('click', () => sendChatMessage(elsDrawer.chatInput.value.trim()));
-  }
-  if (elsDrawer.chatInput) {
-    elsDrawer.chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(elsDrawer.chatInput.value.trim()); }
-    });
-  }
-  // Delegate clicks for chat chips
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('chat-chip')) {
-      sendChatMessage(e.target.dataset.query);
-    }
-  });
-
-  // Open Replace Drawer
-  function openReplaceDrawer(actData) {
-    _drawerContext = { type: 'replace', data: actData };
-    
-    elsDrawer.img.src = actData.imgSrc;
-    elsDrawer.title.textContent = `Replacing: ${actData.title}`;
-    elsDrawer.loc.textContent = `Day ${actData.dayNum} · ${actData.time}`;
-    
-    elsDrawer.chatFooter.hidden = true;
-    
-    elsDrawer.body.innerHTML = `
-      <div class="replace-search-box">
-        <button type="button" class="replace-preprompt" id="btn-preprompt">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> Suggest me some alternatives
-        </button>
-        <div class="replace-or">or</div>
-        <div class="chat-input-area" style="padding:0; border:none; border-radius:999px;">
-          <input type="text" id="replace-input" placeholder="e.g. cozy riverside cafe..." autocomplete="off" />
-          <button type="button" class="chat-send-btn" id="replace-search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
-        </div>
-      </div>
-      <div id="replace-results" style="display:flex; flex-direction:column; gap:16px;"></div>
-    `;
-    
-    elsDrawer.overlay.classList.add('open');
-    elsDrawer.drawer.classList.add('open');
-    
-    document.getElementById('btn-preprompt').addEventListener('click', () => doReplaceSearch(''));
-    document.getElementById('replace-search-btn').addEventListener('click', () => {
-      const val = document.getElementById('replace-input').value.trim();
-      if (val) doReplaceSearch(val);
-    });
-    document.getElementById('replace-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const val = e.target.value.trim();
-        if (val) doReplaceSearch(val);
-      }
-    });
-  }
-
-  async function doReplaceSearch(pref) {
-    const resDiv = document.getElementById('replace-results');
-    resDiv.innerHTML = `<div style="text-align:center; padding: 40px; color: var(--brand-ink);"><i class="fa-solid fa-circle-notch fa-spin fa-2x"></i><p style="margin-top:10px;font-weight:600;">Finding unique alternatives...</p></div>`;
-    
-    const actData = _drawerContext.data;
-    const payload = {
-      current_place: actData.title,
-      destination: pickPlan(state.data).destination || '',
-      time_slot: actData.time || 'Daytime',
-      day_number: actData.dayNum,
-      user_preference: pref,
-      existing_places: getExistingPlaces()
-    };
-    
-    try {
-      const res = await WayfarerAPI.replacePlace(payload);
-      
-      if (!res.alternatives || !res.alternatives.length) {
-        resDiv.innerHTML = `<p style="text-align:center; color:var(--bad);">No alternatives found. Try a different request.</p>`;
-        return;
-      }
-      
-      // Store globally for the swap button to access
-      window._replaceAlts = res.alternatives;
-      
-      let html = '';
-      res.alternatives.forEach((alt, i) => {
-        html += `
-          <div class="alt-card">
-            <div class="alt-header">
-              <div>
-                <h4 class="alt-title">${esc(alt.title)}</h4>
-                <div class="alt-loc">${esc(alt.location_name)}</div>
-              </div>
-              <div class="alt-cost">${money(alt.estimated_cost)}</div>
-            </div>
-            <p class="alt-desc">${esc(alt.description)}</p>
-            <button type="button" class="btn-swap" data-alt-idx="${i}">Swap This In</button>
-          </div>
-        `;
-      });
-      resDiv.innerHTML = html;
-      
-    } catch (err) {
-      console.error(err);
-      resDiv.innerHTML = `<p style="text-align:center; color:var(--bad);">Failed to fetch alternatives. Ensure API is running.</p>`;
-    }
-  }
-
-  // Handle Swap Click
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('btn-swap')) {
-      const idx = parseInt(e.target.dataset.altIdx, 10);
-      const alt = window._replaceAlts[idx];
-      if (!alt || !_drawerContext || _drawerContext.type !== 'replace') return;
-      
-      const actData = _drawerContext.data;
-      const finalPlan = pickPlan(state.data);
-      const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
-      
-      // Perform the swap
-      const newAct = {
-        title: alt.title,
-        location_name: alt.location_name,
-        time: alt.time || actData.time,
-        description: alt.description,
-        cost: alt.estimated_cost,
-        category: alt.category
-      };
-      day.activities[actData.idx] = newAct;
-      
-      closeDrawer();
-      toast(`Swapped in ${esc(alt.title)}!`, 'ok');
-      loadFinal(false); // Re-render itinerary and map
-    }
-  });
-
-
-})();
+          })();
         },
         () => { state.sseHandle = null; }, // onDone
       );
@@ -1964,7 +1274,8 @@ ${custom_notes}`.trim();
     hydrateActivityImages(dest);
   }
   function renderFinal(data) {
-    const plan = pickPlan(data);
+    if (data) state.data = data;
+    const plan = pickPlan(data || state.data);
     const dest = plan.destination || els.wsDestination.textContent || '';
     els.draftArea.hidden = false;
     els.reviewGate.hidden = true;
@@ -2040,22 +1351,14 @@ ${custom_notes}`.trim();
       mainParts.push(renderJourneyCorridor(corridor));
     }
 
-    // Weather Data -> sent to dedicated side column widget!
+    // Weather Data -> sent to main column full-width card
     const weatherData = plan.weather || fullData.research?.weather || fullData.weather || fullData.draft_itinerary?.weather;
     if (weatherData && weatherData.available) {
-      sideParts.push(renderSideWeatherStation(weatherData, dest));
+      mainParts.push(renderSideWeatherStation(weatherData, dest));
     }
 
     if (isFinal && plan.selected_travel) {
-      sideParts.push(renderSelectedTravel(plan.selected_travel, plan.budget?.currency || plan.currency || 'USD'));
-    }
-
-    if (isFinal && plan.travel_options?.recommendations?.has_picks && !plan.selected_travel) {
-      sideParts.push(renderTravelRecommendations(plan));
-    }
-
-    if (isFinal && plan.travel_options && (plan.travel_options.flights?.available || plan.travel_options.hotels?.available)) {
-      sideParts.push(renderTravelOptions(plan, true));
+      mainParts.push(renderSelectedTravel(plan.selected_travel, plan.budget?.currency || plan.currency || 'USD'));
     }
 
     const mapData = plan.route_map || fullData.route_map || (fullData.draft_itinerary && fullData.draft_itinerary.route_map);
@@ -2122,13 +1425,10 @@ ${custom_notes}`.trim();
     }
 
     return `
-      <div class="plan-dashboard-grid">
+      <div class="plan-dashboard-grid plan-dashboard-full">
         <div class="plan-main-column">
           ${mainParts.join('')}
         </div>
-        <aside class="plan-side-column">
-          ${sideParts.join('')}
-        </aside>
       </div>
     `;
   }
@@ -2549,6 +1849,22 @@ ${custom_notes}`.trim();
     });
   }
 
+  function formatTime12(timeStr) {
+    if (!timeStr) return '';
+    const raw = String(timeStr).trim();
+    if (raw.toLowerCase().includes('am') || raw.toLowerCase().includes('pm')) {
+      return raw;
+    }
+    const m = raw.match(/(\d{1,2}):(\d{2})/);
+    if (!m) return raw;
+    let h = parseInt(m[1], 10);
+    const min = m[2];
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h ? h : 12;
+    return `${h}:${min} ${ampm}`;
+  }
+
   function renderActivity(a, destination, isDraft, dayNum, actIdx) {
     let title = '';
     let locationName = '';
@@ -2556,6 +1872,9 @@ ${custom_notes}`.trim();
     let time = '';
     let cost = null;
     let imageUrl = null;
+    let openingHours = '';
+    let duration = '';
+    let costStr = '';
 
     if (typeof a === 'string') {
       title = a.trim();
@@ -2567,13 +1886,28 @@ ${custom_notes}`.trim();
       desc = a.description || a.detail || a.notes || '';
       cost = a.cost ?? a.price ?? a.amount;
       imageUrl = a.image_url || null;
+      openingHours = a.opening_hours || a.hours || '';
+      duration = a.estimated_duration || a.duration || '';
+      costStr = a.estimated_cost || '';
     }
 
     if (!title && !locationName) return '';
 
+    // Guarantee 12-hour AM/PM format, or logical fallback slot
+    if (!time) {
+      const defaultSlots = ['09:00 AM', '11:30 AM', '02:00 PM', '05:00 PM', '07:30 PM', '09:30 PM'];
+      time = defaultSlots[((actIdx || 0)) % defaultSlots.length];
+    } else {
+      time = formatTime12(time);
+    }
+
     const destName = typeof destination === 'string' ? destination.split(',')[0].trim() : '';
     const searchTarget = locationName || title;
     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(destName + ' ' + searchTarget)}`;
+
+    if (!desc) {
+      desc = `Immerse in the atmosphere and local culture around ${searchTarget}.`;
+    }
     
     // Always render clickable hyperlink for the activity title
     const titleHTML = `<a href="${searchUrl}" target="_blank" rel="noopener noreferrer" class="activity-title-link" title="Explore ${esc(searchTarget)} on Google">
@@ -2593,24 +1927,26 @@ ${custom_notes}`.trim();
 
     const activityAttrs = ` data-image-key="${esc(imgKey)}" data-title="${esc(searchTarget)}" data-location="${esc(searchTarget)}"`;
 
-    const cumulative = a.cumulative_distance_km;
+    // Render travel distance & time between events (shown in both draft & final)
     const travel = a.travel_from_prev || a.travel_to_next;
     let travelHTML = '';
-    
-    if (!isDraft) {
-      if (cumulative === 0) {
-        travelHTML = `<div class="a-travel"><strong>0 km</strong> — Start of day</div>`;
-      } else if (cumulative > 0 && travel) {
-        travelHTML = `
-          <div class="a-travel">
-            <strong>${cumulative} km</strong> 
-            <span style="opacity: 0.6; margin: 0 6px;">|</span>
-            <i class="fa-solid ${window.WayfarerMaps ? window.WayfarerMaps.modeIcon(travel.mode) : 'fa-person-walking'}"></i>
-            +${travel.distance_km} km (${window.WayfarerMaps ? window.WayfarerMaps.formatDuration(travel.duration_minutes) : travel.duration_minutes + ' min'})
-          </div>`;
-      }
+    if (travel && (travel.distance_km || travel.duration_minutes)) {
+      const modeIco = window.WayfarerMaps ? window.WayfarerMaps.modeIcon(travel.mode) : 'fa-person-walking';
+      const durText = window.WayfarerMaps ? window.WayfarerMaps.formatDuration(travel.duration_minutes) : `${travel.duration_minutes} min`;
+      travelHTML = `
+        <div class="a-travel-connector">
+          <i class="fa-solid ${modeIco}"></i>
+          <span><strong>${travel.distance_km} km</strong> (${durText}) from previous stop</span>
+        </div>`;
     }
 
+    // Specifications badges: opening hours, duration, cost
+    const specs = [];
+    if (openingHours) specs.push(`<span class="a-spec-badge"><i class="fa-regular fa-clock"></i> ${esc(openingHours)}</span>`);
+    if (duration) specs.push(`<span class="a-spec-badge"><i class="fa-solid fa-hourglass-half"></i> ${esc(duration)}</span>`);
+    const finalCost = costStr || (cost != null ? money(cost) : '');
+    if (finalCost) specs.push(`<span class="a-spec-badge spec-cost"><i class="fa-solid fa-ticket"></i> ${esc(finalCost)}</span>`);
+    const specsHTML = specs.length ? `<div class="a-specs-row">${specs.join('')}</div>` : '';
 
     // Add hover actions for final itinerary (not draft)
     let hoverActions = '';
@@ -2631,17 +1967,18 @@ ${custom_notes}`.trim();
 
     return `<div class="activity"${activityAttrs}>
       ${hoverActions}
-      ${time ? `<span class="a-time">${esc(time)}</span>` : ''}
+      <span class="a-time"><span class="a-time-pill"><i class="fa-regular fa-clock"></i> ${esc(time)}</span></span>
       <div class="a-body">
         <div class="a-text">
           <p class="a-title">${titleHTML}</p>
-          ${desc ? `<p class="a-desc">${esc(desc)}</p>` : ''}
+          <p class="a-desc">${esc(desc)}</p>
+          ${specsHTML}
           ${travelHTML}
-          ${cost != null ? `<span class="a-cost">${money(cost)}</span>` : ''}
         </div>
         ${imgHTML}
       </div>
     </div>`;
+  }
   }
 
   function weatherText(w) {
@@ -2678,6 +2015,8 @@ ${custom_notes}`.trim();
     const contrast = corridor.climate_and_cultural_contrast || '';
     const retTip = corridor.return_departure_tip || '';
     const facts = corridor.grounded_route_facts || [];
+    const depAirport = corridor.departure_airport || '';
+    const arrAirport = corridor.arrival_airport || '';
 
     return `
       <div class="journey-corridor-card" style="margin-bottom: 24px; padding: 20px 24px; background: linear-gradient(135deg, #042f2e 0%, #115e59 100%); color: #fff; border-radius: var(--radius); box-shadow: 0 4px 16px rgba(13, 148, 136, 0.18);">
@@ -2696,6 +2035,13 @@ ${custom_notes}`.trim();
           </span>
         </div>
         
+        ${(depAirport || arrAirport) ? `
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 10px; padding: 10px 14px; background: rgba(255,255,255,0.1); border-radius: 8px; font-size: 0.88rem;">
+            ${depAirport ? `<div style="flex: 1; min-width: 200px;"><i class="fa-solid fa-plane" style="color:#5eead4; margin-right:5px;"></i><strong>Departing Hub:</strong> ${esc(depAirport)}</div>` : ''}
+            ${arrAirport ? `<div style="flex: 1; min-width: 200px;"><i class="fa-solid fa-plane-arrival" style="color:#5eead4; margin-right:5px;"></i><strong>Arrival Airport:</strong> ${esc(arrAirport)}</div>` : ''}
+          </div>
+        ` : ''}
+
         ${transfer ? `
           <div style="margin-top: 10px; font-size: 0.92rem; line-height: 1.5; color: #ccfbf1;">
             <strong><i class="fa-solid fa-taxi" style="color: #5eead4;"></i> Arrival Transfer:</strong> ${esc(transfer)}
@@ -3019,16 +2365,307 @@ ${custom_notes}`.trim();
     document.getElementById('planner').scrollIntoView({ behavior: 'smooth' });
   });
 
+  // ─── Google Search Style Autocomplete Engine ──────────────────────
+  const PLACES_DATA = [
+    // India Hubs & Escapes
+    { name: 'Delhi, India', city: 'Delhi', country: 'India', iata: 'DEL', closest_airport_name: 'Indira Gandhi International Airport', closest_airport_iata: 'DEL', distance_km: 12, sub: '✈ Nearest Airport: Indira Gandhi Int\'l (DEL) · 12 km from center', type: 'airport' },
+    { name: 'Rishikesh, India', city: 'Rishikesh', country: 'India', iata: 'DED', closest_airport_name: 'Dehradun Airport', closest_airport_iata: 'DED', distance_km: 14, sub: '✈ Nearest Airport: Dehradun Airport (DED) · 14 km away', type: 'destination' },
+    { name: 'Mumbai, India', city: 'Mumbai', country: 'India', iata: 'BOM', closest_airport_name: 'Chhatrapati Shivaji Maharaj International', closest_airport_iata: 'BOM', distance_km: 14, sub: '✈ Nearest Airport: Mumbai Int\'l (BOM) · 14 km', type: 'airport' },
+    { name: 'Bengaluru, India', city: 'Bengaluru', country: 'India', iata: 'BLR', closest_airport_name: 'Kempegowda International Airport', closest_airport_iata: 'BLR', distance_km: 30, sub: '✈ Nearest Airport: Kempegowda (BLR) · 30 km', type: 'airport' },
+    { name: 'Goa, India', city: 'Goa', country: 'India', iata: 'GOI', closest_airport_name: 'Dabolim & Manohar MOPA Airport', closest_airport_iata: 'GOI', distance_km: 18, sub: '✈ Nearest Airport: Dabolim (GOI) · 18 km / Mopa (GOX) · 28 km', type: 'destination' },
+    { name: 'Jaipur, India', city: 'Jaipur', country: 'India', iata: 'JAI', closest_airport_name: 'Jaipur International Airport', closest_airport_iata: 'JAI', distance_km: 11, sub: '✈ Nearest Airport: Jaipur International (JAI) · 11 km', type: 'destination' },
+    { name: 'Varanasi, India', city: 'Varanasi', country: 'India', iata: 'VNS', closest_airport_name: 'Lal Bahadur Shastri International', closest_airport_iata: 'VNS', distance_km: 18, sub: '✈ Nearest Airport: Varanasi (VNS) · 18 km from Ghats', type: 'destination' },
+    { name: 'Agra, India', city: 'Agra', country: 'India', iata: 'AGR', closest_airport_name: 'Agra Airport', closest_airport_iata: 'AGR', distance_km: 6, sub: '✈ Nearest Airport: Agra (AGR) · 6 km (or Delhi DEL)', type: 'destination' },
+    { name: 'Kochi, India', city: 'Kochi', country: 'India', iata: 'COK', closest_airport_name: 'Cochin International Airport', closest_airport_iata: 'COK', distance_km: 28, sub: '✈ Nearest Airport: Cochin International (COK) · 28 km', type: 'airport' },
+    { name: 'Chennai, India', city: 'Chennai', country: 'India', iata: 'MAA', closest_airport_name: 'Chennai International Airport', closest_airport_iata: 'MAA', distance_km: 16, sub: '✈ Nearest Airport: Chennai (MAA) · 16 km', type: 'airport' },
+    { name: 'Kolkata, India', city: 'Kolkata', country: 'India', iata: 'CCU', closest_airport_name: 'Netaji Subhash Chandra Bose Int\'l', closest_airport_iata: 'CCU', distance_km: 14, sub: '✈ Nearest Airport: Kolkata (CCU) · 14 km', type: 'airport' },
+    { name: 'Hyderabad, India', city: 'Hyderabad', country: 'India', iata: 'HYD', closest_airport_name: 'Rajiv Gandhi International Airport', closest_airport_iata: 'HYD', distance_km: 24, sub: '✈ Nearest Airport: Hyderabad (HYD) · 24 km', type: 'airport' },
+    { name: 'Pune, India', city: 'Pune', country: 'India', iata: 'PNQ', closest_airport_name: 'Pune International Airport', closest_airport_iata: 'PNQ', distance_km: 10, sub: '✈ Nearest Airport: Pune (PNQ) · 10 km', type: 'airport' },
+    { name: 'Ahmedabad, India', city: 'Ahmedabad', country: 'India', iata: 'AMD', closest_airport_name: 'Sardar Vallabhbhai Patel Int\'l', closest_airport_iata: 'AMD', distance_km: 9, sub: '✈ Nearest Airport: Ahmedabad (AMD) · 9 km', type: 'airport' },
+    { name: 'Amritsar, India', city: 'Amritsar', country: 'India', iata: 'ATQ', closest_airport_name: 'Sri Guru Ram Dass Jee Int\'l', closest_airport_iata: 'ATQ', distance_km: 11, sub: '✈ Nearest Airport: Amritsar (ATQ) · 11 km from Golden Temple', type: 'destination' },
+    { name: 'Srinagar, India', city: 'Srinagar', country: 'India', iata: 'SXR', closest_airport_name: 'Sheikh ul-Alam International Airport', closest_airport_iata: 'SXR', distance_km: 12, sub: '✈ Nearest Airport: Srinagar (SXR) · 12 km from Dal Lake', type: 'destination' },
+    { name: 'Leh Ladakh, India', city: 'Leh', country: 'India', iata: 'IXL', closest_airport_name: 'Kushok Bakula Rimpochee Airport', closest_airport_iata: 'IXL', distance_km: 4, sub: '✈ Nearest Airport: Leh (IXL) · 4 km from town', type: 'destination' },
+    { name: 'Udaipur, India', city: 'Udaipur', country: 'India', iata: 'UDR', closest_airport_name: 'Maharana Pratap Airport', closest_airport_iata: 'UDR', distance_km: 22, sub: '✈ Nearest Airport: Udaipur (UDR) · 22 km from Lake Pichola', type: 'destination' },
+    { name: 'Manali, India', city: 'Manali', country: 'India', iata: 'KUU', closest_airport_name: 'Kullu Bhuntar Airport', closest_airport_iata: 'KUU', distance_km: 50, sub: '✈ Nearest Airport: Kullu Bhuntar (KUU) · 50 km scenic drive', type: 'destination' },
+    { name: 'Shimla, India', city: 'Shimla', country: 'India', iata: 'SLV', closest_airport_name: 'Shimla Jubbarhatti Airport', closest_airport_iata: 'SLV', distance_km: 22, sub: '✈ Nearest Airport: Shimla (SLV) · 22 km (or Chandigarh IXC · 115 km)', type: 'destination' },
+    { name: 'Haridwar, India', city: 'Haridwar', country: 'India', iata: 'DED', closest_airport_name: 'Dehradun Airport', closest_airport_iata: 'DED', distance_km: 38, sub: '✈ Nearest Airport: Dehradun (DED) · 38 km from Har Ki Pauri', type: 'destination' },
+    { name: 'Darjeeling, India', city: 'Darjeeling', country: 'India', iata: 'IXB', closest_airport_name: 'Bagdogra Airport', closest_airport_iata: 'IXB', distance_km: 68, sub: '✈ Nearest Airport: Bagdogra (IXB) · 68 km mountain road', type: 'destination' },
+    { name: 'Ooty, India', city: 'Ooty', country: 'India', iata: 'CJB', closest_airport_name: 'Coimbatore International Airport', closest_airport_iata: 'CJB', distance_km: 85, sub: '✈ Nearest Airport: Coimbatore (CJB) · 85 km ghat road', type: 'destination' },
+    { name: 'Munnar, India', city: 'Munnar', country: 'India', iata: 'COK', closest_airport_name: 'Cochin International Airport', closest_airport_iata: 'COK', distance_km: 108, sub: '✈ Nearest Airport: Cochin (COK) · 108 km through tea hills', type: 'destination' },
+
+    // Global Escapes & World Hubs
+    { name: 'Kyoto, Japan', city: 'Kyoto', country: 'Japan', iata: 'ITM', closest_airport_name: 'Osaka Itami Airport', closest_airport_iata: 'ITM', distance_km: 38, sub: '✈ Nearest Airport: Osaka Itami (ITM) · 38 km (or Kansai KIX · 78 km)', type: 'destination' },
+    { name: 'Tokyo, Japan', city: 'Tokyo', country: 'Japan', iata: 'HND', closest_airport_name: 'Tokyo Haneda Airport', closest_airport_iata: 'HND', distance_km: 15, sub: '✈ Nearest Airport: Tokyo Haneda (HND) · 15 km (Narita NRT · 60 km)', type: 'airport' },
+    { name: 'Amalfi Coast, Italy', city: 'Amalfi Coast', country: 'Italy', iata: 'QSR', closest_airport_name: 'Salerno Costa d\'Amalfi Airport', closest_airport_iata: 'QSR', distance_km: 26, sub: '✈ Nearest Airport: Salerno (QSR) · 26 km (or Naples NAP · 38 km)', type: 'destination' },
+    { name: 'Rome, Italy', city: 'Rome', country: 'Italy', iata: 'FCO', closest_airport_name: 'Leonardo da Vinci Fiumicino Airport', closest_airport_iata: 'FCO', distance_km: 26, sub: '✈ Nearest Airport: Rome Fiumicino (FCO) · 26 km express train', type: 'airport' },
+    { name: 'Zermatt, Switzerland', city: 'Zermatt', country: 'Switzerland', iata: 'SIR', closest_airport_name: 'Sion Airport', closest_airport_iata: 'SIR', distance_km: 39, sub: '✈ Nearest Airport: Sion (SIR) · 39 km (or Zurich ZRH · 210 km rail)', type: 'destination' },
+    { name: 'Zurich, Switzerland', city: 'Zurich', country: 'Switzerland', iata: 'ZRH', closest_airport_name: 'Zurich Airport', closest_airport_iata: 'ZRH', distance_km: 10, sub: '✈ Nearest Airport: Zurich Kloten (ZRH) · 10 km direct train', type: 'airport' },
+    { name: 'Lisbon, Portugal', city: 'Lisbon', country: 'Portugal', iata: 'LIS', closest_airport_name: 'Humberto Delgado Airport', closest_airport_iata: 'LIS', distance_km: 7, sub: '✈ Nearest Airport: Lisbon (LIS) · 7 km metro connection', type: 'destination' },
+    { name: 'Paris, France', city: 'Paris', country: 'France', iata: 'CDG', closest_airport_name: 'Charles de Gaulle & Orly', closest_airport_iata: 'CDG', distance_km: 23, sub: '✈ Nearest Airport: Paris CDG · 23 km / Orly ORY · 14 km', type: 'airport' },
+    { name: 'London, UK', city: 'London', country: 'United Kingdom', iata: 'LHR', closest_airport_name: 'Heathrow Airport', closest_airport_iata: 'LHR', distance_km: 22, sub: '✈ Nearest Airport: London Heathrow (LHR) · 22 km express tube', type: 'airport' },
+    { name: 'Santorini, Greece', city: 'Santorini', country: 'Greece', iata: 'JTR', closest_airport_name: 'Santorini Thira Airport', closest_airport_iata: 'JTR', distance_km: 5, sub: '✈ Nearest Airport: Santorini Thira (JTR) · 5 km from Fira', type: 'destination' },
+    { name: 'Bali, Indonesia', city: 'Bali', country: 'Indonesia', iata: 'DPS', closest_airport_name: 'Ngurah Rai International Airport', closest_airport_iata: 'DPS', distance_km: 12, sub: '✈ Nearest Airport: Ngurah Rai (DPS) · 12 km (Ubud · 35 km)', type: 'destination' },
+    { name: 'Singapore', city: 'Singapore', country: 'Singapore', iata: 'SIN', closest_airport_name: 'Singapore Changi Airport', closest_airport_iata: 'SIN', distance_km: 18, sub: '✈ Nearest Airport: Changi International (SIN) · 18 km', type: 'airport' },
+    { name: 'Bangkok, Thailand', city: 'Bangkok', country: 'Thailand', iata: 'BKK', closest_airport_name: 'Suvarnabhumi Airport', closest_airport_iata: 'BKK', distance_km: 28, sub: '✈ Nearest Airport: Suvarnabhumi (BKK) · 28 km airport rail link', type: 'airport' },
+    { name: 'Dubai, UAE', city: 'Dubai', country: 'United Arab Emirates', iata: 'DXB', closest_airport_name: 'Dubai International Airport', closest_airport_iata: 'DXB', distance_km: 10, sub: '✈ Nearest Airport: Dubai Int\'l (DXB) · 10 km from Downtown', type: 'airport' },
+    { name: 'New York City, USA', city: 'New York', country: 'USA', iata: 'JFK', closest_airport_name: 'JFK & LaGuardia Airports', closest_airport_iata: 'JFK', distance_km: 19, sub: '✈ Nearest Airport: JFK · 19 km / LGA · 14 km from Midtown', type: 'airport' },
+    { name: 'San Francisco, USA', city: 'San Francisco', country: 'USA', iata: 'SFO', closest_airport_name: 'San Francisco International Airport', closest_airport_iata: 'SFO', distance_km: 18, sub: '✈ Nearest Airport: San Francisco (SFO) · 18 km BART train', type: 'airport' },
+    { name: 'Honolulu, USA', city: 'Honolulu', country: 'USA', iata: 'HNL', closest_airport_name: 'Daniel K. Inouye International', closest_airport_iata: 'HNL', distance_km: 8, sub: '✈ Nearest Airport: Honolulu (HNL) · 8 km from Waikiki', type: 'destination' }
+  ];
+
+  function matchPlaces(query, forType) {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) {
+      const trending = forType === 'origin'
+        ? ['Delhi, India', 'Mumbai, India', 'Bengaluru, India', 'London, UK', 'New York City, USA', 'Paris, France', 'Dubai, UAE']
+        : ['Rishikesh, India', 'Kyoto, Japan', 'Amalfi Coast, Italy', 'Zermatt, Switzerland', 'Goa, India', 'Paris, France', 'Santorini, Greece', 'Bali, Indonesia'];
+      return PLACES_DATA.filter(p => trending.includes(p.name)).slice(0, 7);
+    }
+
+    const scored = [];
+    PLACES_DATA.forEach(p => {
+      const cityL = p.city.toLowerCase();
+      const nameL = p.name.toLowerCase();
+      const iataL = (p.iata || p.closest_airport_iata || '').toLowerCase();
+      const subL = (p.sub || '').toLowerCase();
+
+      let score = 0;
+      if (cityL === q) score = 100;
+      else if (iataL === q) score = 95;
+      else if (cityL.startsWith(q)) score = 80 - cityL.length * 0.5;
+      else if (iataL.startsWith(q)) score = 75;
+      else if (nameL.startsWith(q)) score = 70;
+      else if (nameL.includes(' ' + q)) score = 65;
+      else if (nameL.includes(q)) score = 50;
+      else if (subL.includes(q)) score = 30;
+
+      if (score > 0) {
+        if (forType === 'origin' && p.type === 'airport') score += 5;
+        if (forType === 'destination' && p.type === 'destination') score += 5;
+        scored.push({ score, place: p });
+      }
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map(s => s.place).slice(0, 7);
+  }
+
+  function highlightMatch(text, query) {
+    if (!query || !query.trim()) return esc(text);
+    const q = query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(${q})`, 'gi');
+    return esc(text).replace(regex, '<strong>$1</strong>');
+  }
+
+  function renderSuggestionItem(place, query, isSelected) {
+    const iconClass = 'fa-location-dot';
+    const dist = place.distance_km != null ? place.distance_km : 0;
+    const iata = place.closest_airport_iata || place.iata || '';
+    const airportName = place.closest_airport_name || (iata ? `${iata} Airport` : 'Airport');
+    
+    // Subtitle displays the closest airport and distance
+    let subText = place.sub;
+    if (!subText || !subText.includes('km')) {
+      if (dist > 0) {
+        subText = `✈ Nearest Airport: ${airportName} (${iata}) · ${dist} km away`;
+      } else if (iata) {
+        subText = `✈ Direct Airport: ${airportName} (${iata}) · In city`;
+      } else {
+        subText = place.country || 'Global Destination';
+      }
+    }
+
+    const badgeText = dist > 0 ? `${dist} km` : (iata ? `${iata} Hub` : 'Location');
+    
+    return `
+      <div class="suggestion-item${isSelected ? ' selected' : ''}" data-val="${esc(place.name)}">
+        <div class="suggestion-left">
+          <div class="suggestion-icon"><i class="fa-solid ${iconClass}"></i></div>
+          <div class="suggestion-info">
+            <div class="suggestion-title">${highlightMatch(place.name, query)}</div>
+            <div class="suggestion-sub">${esc(subText)}</div>
+          </div>
+        </div>
+        <span class="suggestion-badge badge-km"><i class="fa-solid fa-plane"></i> ${esc(badgeText)}</span>
+      </div>
+    `;
+  }
+
+  function initAutocomplete() {
+    const originInput = document.getElementById('origin');
+    const originDropdown = document.getElementById('origin-suggestions');
+    const destInput = document.getElementById('destination');
+    const destDropdown = document.getElementById('destination-suggestions');
+
+    function attachAutocomplete(inputEl, dropdownEl, forType) {
+      if (!inputEl || !dropdownEl) return;
+      const pod = inputEl.closest('.console-segment');
+      let selectedIdx = -1;
+      let currentMatches = [];
+      let debounceTimer = null;
+
+      function renderList(matches, query) {
+        if (!matches || !matches.length) {
+          close();
+          return;
+        }
+        selectedIdx = -1;
+        const headerText = (query || '').trim() ? 'Suggested Locations & Nearest Airports' : 'Trending Escapes';
+        dropdownEl.innerHTML = `
+          <div class="autocomplete-header">${headerText}</div>
+          ${matches.map((p, idx) => renderSuggestionItem(p, query, idx === selectedIdx)).join('')}
+        `;
+        dropdownEl.hidden = false;
+        dropdownEl.removeAttribute('hidden');
+        dropdownEl.classList.add('open');
+        dropdownEl.style.display = 'flex';
+        if (pod) pod.classList.add('has-dropdown-open');
+      }
+
+      function open(query = inputEl.value) {
+        // 1. Instant local matches (0ms delay)
+        currentMatches = matchPlaces(query, forType);
+        renderList(currentMatches, query);
+
+        // 2. Debounced global search (220ms delay) to cover every global city/airport
+        clearTimeout(debounceTimer);
+        const trimmed = (query || '').trim();
+        if (trimmed.length >= 2) {
+          debounceTimer = setTimeout(async () => {
+            try {
+              const res = await fetch(`/places/suggest?q=${encodeURIComponent(trimmed)}&type=${forType}&limit=8`);
+              if (res.ok) {
+                const serverMatches = await res.json();
+                if (serverMatches && serverMatches.length) {
+                  const seen = new Set(currentMatches.map(m => m.name.toLowerCase()));
+                  serverMatches.forEach(sm => {
+                    if (!seen.has(sm.name.toLowerCase())) {
+                      seen.add(sm.name.toLowerCase());
+                      currentMatches.push(sm);
+                    }
+                  });
+                  renderList(currentMatches.slice(0, 8), trimmed);
+                }
+              }
+            } catch (e) {
+              // keep local matches quietly
+            }
+          }, 220);
+        }
+      }
+
+      function close() {
+        clearTimeout(debounceTimer);
+        dropdownEl.hidden = true;
+        dropdownEl.setAttribute('hidden', '');
+        dropdownEl.classList.remove('open');
+        dropdownEl.style.display = 'none';
+        dropdownEl.innerHTML = '';
+        selectedIdx = -1;
+        if (pod) pod.classList.remove('has-dropdown-open');
+      }
+
+      function selectPlace(placeName) {
+        // Always fill with clean location (e.g. "Rishikesh, India")
+        inputEl.value = placeName;
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        close();
+      }
+
+      inputEl.addEventListener('focus', () => {
+        open(inputEl.value);
+      });
+
+      inputEl.addEventListener('click', () => {
+        open(inputEl.value);
+      });
+
+      inputEl.addEventListener('input', () => {
+        open(inputEl.value);
+      });
+
+      inputEl.addEventListener('keyup', (e) => {
+        if (!['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(e.key)) {
+          open(inputEl.value);
+        }
+      });
+
+      inputEl.addEventListener('keydown', (e) => {
+        if (dropdownEl.hidden || !currentMatches.length) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            open(inputEl.value);
+          }
+          return;
+        }
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIdx = (selectedIdx + 1) % currentMatches.length;
+          updateHighlight();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIdx = (selectedIdx - 1 + currentMatches.length) % currentMatches.length;
+          updateHighlight();
+        } else if (e.key === 'Enter') {
+          if (selectedIdx >= 0 && selectedIdx < currentMatches.length) {
+            e.preventDefault();
+            selectPlace(currentMatches[selectedIdx].name);
+          }
+        } else if (e.key === 'Escape' || e.key === 'Tab') {
+          close();
+        }
+      });
+
+      function updateHighlight() {
+        const items = dropdownEl.querySelectorAll('.suggestion-item');
+        items.forEach((item, idx) => {
+          if (idx === selectedIdx) {
+            item.classList.add('selected');
+            item.scrollIntoView({ block: 'nearest' });
+          } else {
+            item.classList.remove('selected');
+          }
+        });
+      }
+
+      dropdownEl.addEventListener('click', (e) => {
+        const item = e.target.closest('.suggestion-item');
+        if (item && item.dataset.val) {
+          selectPlace(item.dataset.val);
+        }
+      });
+
+      document.addEventListener('click', (e) => {
+        if (pod && !pod.contains(e.target)) {
+          close();
+        }
+      });
+    }
+
+    attachAutocomplete(originInput, originDropdown, 'origin');
+    attachAutocomplete(destInput, destDropdown, 'destination');
+  }
+
   // ─── Init ───────────────────────────────────────────────
   async function init() {
-    renderChips();
-    // sensible default dates: 30 days out, 4-night trip
-    const start = new Date(Date.now() + 30 * 864e5);
-    const end = new Date(start.getTime() + 4 * 864e5);
-    const iso = (d) => d.toISOString().slice(0, 10);
-    els.form.start_date.value = iso(start);
-    els.form.end_date.value = iso(end);
-    if (typeof updateNightCounter === "function") updateNightCounter();
+    try { renderChips(); } catch (e) { console.warn('renderChips', e); }
+    try { initAutocomplete(); } catch (e) { console.warn('initAutocomplete', e); }
+    
+    // Sensible default dates: 30 days out, 4-night trip
+    try {
+      const start = new Date(Date.now() + 30 * 864e5);
+      const end = new Date(start.getTime() + 4 * 864e5);
+      const iso = (d) => d.toISOString().slice(0, 10);
+      if (els.form && els.form.start_date) els.form.start_date.value = iso(start);
+      if (els.form && els.form.end_date) els.form.end_date.value = iso(end);
+      if (typeof updateNightCounter === "function") updateNightCounter();
+      if (typeof updateCurrencySymbolDisplay === "function") updateCurrencySymbolDisplay();
+      if (typeof updateTravelerPlural === "function") updateTravelerPlural();
+    } catch (e) {
+      console.warn('dates init', e);
+    }
 
     const apiConfig = await WayfarerAPI.getConfig();
     if (apiConfig.carto_api_key && window.WayfarerMaps) {
@@ -3102,8 +2739,18 @@ ${custom_notes}`.trim();
       }
     }
 
-    openAuthBtn?.addEventListener('click', () => { if (authModal) authModal.hidden = false; });
-    authClose?.addEventListener('click', () => { if (authModal) authModal.hidden = true; });
+    openAuthBtn?.addEventListener('click', () => {
+      if (authModal) {
+        authModal.hidden = false;
+        document.body.classList.add('modal-open');
+      }
+    });
+    authClose?.addEventListener('click', () => {
+      if (authModal) {
+        authModal.hidden = true;
+        document.body.classList.remove('modal-open');
+      }
+    });
 
     tabLogin?.addEventListener('click', () => {
       tabLogin.classList.add('active');
@@ -3163,7 +2810,12 @@ ${custom_notes}`.trim();
     const shareForm = document.getElementById('share-form');
     const shareError = document.getElementById('share-error');
 
-    shareClose?.addEventListener('click', () => { if (shareModal) shareModal.hidden = true; });
+    shareClose?.addEventListener('click', () => {
+      if (shareModal) {
+        shareModal.hidden = true;
+        document.body.classList.remove('modal-open');
+      }
+    });
 
     document.addEventListener('click', (e) => {
       if (e.target.closest('#btn-share-comm-trigger')) {
@@ -3174,14 +2826,20 @@ ${custom_notes}`.trim();
         }
         if (!WayfarerAPI.isLoggedIn()) {
           toast('Please sign in to publish your itinerary to the community!', 'warn');
-          if (authModal) authModal.hidden = false;
+          if (authModal) {
+            authModal.hidden = false;
+            document.body.classList.add('modal-open');
+          }
           return;
         }
         const titleInput = document.getElementById('share-title');
         if (titleInput) {
           titleInput.value = `${finalPlan.destination} ${finalPlan.days ? finalPlan.days.length : 4}-Day Journey`;
         }
-        if (shareModal) shareModal.hidden = false;
+        if (shareModal) {
+          shareModal.hidden = false;
+          document.body.classList.add('modal-open');
+        }
       }
     });
 
@@ -3224,41 +2882,61 @@ ${custom_notes}`.trim();
     });
   }
 
-  init();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { init(); });
+  } else {
+    init();
+  }
 
-  // ─── Slide-Out Drawer Logic (Chat / Replace) ───────────────────────
-  const elsDrawer = {
-    overlay: document.getElementById('drawer-overlay'),
-    drawer: document.getElementById('side-drawer'),
-    closeBtn: document.getElementById('drawer-close'),
-    img: document.getElementById('drawer-img'),
-    title: document.getElementById('drawer-title'),
-    loc: document.getElementById('drawer-loc'),
-    body: document.getElementById('drawer-body'),
-    chatFooter: document.getElementById('drawer-footer-chat'),
-    chatInput: document.getElementById('chat-input-box'),
-    chatSendBtn: document.getElementById('chat-send-btn')
-  };
+  // ─── Slide-Out Drawer Logic (Chat / Replace / Remove) ─────────────
+  function getDrawerEls() {
+    return {
+      overlay: document.getElementById('drawer-overlay'),
+      drawer: document.getElementById('side-drawer'),
+      closeBtn: document.getElementById('drawer-close'),
+      img: document.getElementById('drawer-img'),
+      title: document.getElementById('drawer-title'),
+      loc: document.getElementById('drawer-loc'),
+      body: document.getElementById('drawer-body'),
+      chatFooter: document.getElementById('drawer-footer-chat'),
+      chatInput: document.getElementById('chat-input-box'),
+      chatSendBtn: document.getElementById('chat-send-btn')
+    };
+  }
 
   let _drawerContext = null;
 
   function closeDrawer() {
-    if (elsDrawer.overlay) elsDrawer.overlay.classList.remove('open');
-    if (elsDrawer.drawer) elsDrawer.drawer.classList.remove('open');
+    const d = getDrawerEls();
+    if (d.overlay) d.overlay.classList.remove('open');
+    if (d.drawer) d.drawer.classList.remove('open');
+    document.body.classList.remove('modal-open');
     _drawerContext = null;
   }
 
-  if (elsDrawer.closeBtn) elsDrawer.closeBtn.addEventListener('click', closeDrawer);
-  if (elsDrawer.overlay) elsDrawer.overlay.addEventListener('click', closeDrawer);
+  // Global listeners for closing drawer
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#drawer-close') || e.target.id === 'drawer-overlay') {
+      closeDrawer();
+    }
+  });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeDrawer();
+    if (e.key === 'Escape') {
+      closeDrawer();
+      document.body.classList.remove('modal-open');
+      const am = document.getElementById('auth-modal');
+      if (am) am.hidden = true;
+      const sm = document.getElementById('share-modal');
+      if (sm) sm.hidden = true;
+    }
   });
 
   // Extract activity from plan state
   function getActivityData(dayNum, idx) {
     const finalPlan = pickPlan(state.data);
-    if (!finalPlan || !finalPlan.days) return null;
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == dayNum);
+    if (!finalPlan) return null;
+    const days = findDays(finalPlan);
+    const day = days.find(d => (d.day ?? d.day_number ?? d.index) == dayNum);
     if (!day || !day.activities || !day.activities[idx]) return null;
     const act = day.activities[idx];
     
@@ -3284,9 +2962,10 @@ ${custom_notes}`.trim();
   function getExistingPlaces() {
     const places = [];
     const finalPlan = pickPlan(state.data);
-    if (!finalPlan || !finalPlan.days) return places;
+    if (!finalPlan) return places;
+    const days = findDays(finalPlan);
     
-    finalPlan.days.forEach(day => {
+    days.forEach(day => {
       if (!day.activities) return;
       day.activities.forEach(act => {
         let title = '';
@@ -3298,8 +2977,8 @@ ${custom_notes}`.trim();
     return places;
   }
 
-  // Delegate clicks for hover actions
-  els.itinerary.addEventListener('click', (e) => {
+  // Delegate clicks for hover actions (chat, replace, remove)
+  document.addEventListener('click', (e) => {
     const btn = e.target.closest('.action-btn');
     if (!btn) return;
     
@@ -3323,7 +3002,10 @@ ${custom_notes}`.trim();
   let _lastRemoved = null; // For undo
   function handleRemove(actData) {
     const finalPlan = pickPlan(state.data);
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
+    if (!finalPlan) return;
+    const days = findDays(finalPlan);
+    const day = days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
+    if (!day || !day.activities) return;
     
     // Save for undo
     _lastRemoved = {
@@ -3335,96 +3017,105 @@ ${custom_notes}`.trim();
     // Remove from array
     day.activities.splice(actData.idx, 1);
     
-    // Update UI
-    toast(`Removed ${esc(actData.title)} from Day ${actData.dayNum}. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
+    // Update UI without re-fetching from server
+    toast(`Removed "${esc(actData.title)}" from Day ${actData.dayNum}. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
     
-    loadFinal(false); // Re-render itinerary and map
+    renderFinal(state.data); // Re-render modified plan locally
   }
   
   window.undoRemove = function() {
     if (!_lastRemoved) return;
     const finalPlan = pickPlan(state.data);
-    const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == _lastRemoved.dayNum);
-    if (day) {
+    if (!finalPlan) return;
+    const days = findDays(finalPlan);
+    const day = days.find(d => (d.day ?? d.day_number ?? d.index) == _lastRemoved.dayNum);
+    if (day && day.activities) {
       day.activities.splice(_lastRemoved.idx, 0, _lastRemoved.actObj);
       _lastRemoved = null;
       toast('Activity restored.', 'ok');
-      loadFinal(false);
+      renderFinal(state.data);
     }
   };
 
   // Open Chat Drawer
   function openChatDrawer(actData) {
+    const d = getDrawerEls();
+    if (!d.drawer || !d.overlay) return;
     _drawerContext = { type: 'chat', data: actData, history: [] };
     
-    elsDrawer.img.src = actData.imgSrc;
-    elsDrawer.title.textContent = actData.title;
-    const dest = (pickPlan(state.data).destination || els.wsDestination.textContent || '').split(',')[0].trim();
-    elsDrawer.loc.textContent = dest;
+    if (d.img) d.img.src = actData.imgSrc;
+    if (d.title) d.title.textContent = actData.title;
+    const dest = (pickPlan(state.data).destination || (els.wsDestination && els.wsDestination.textContent) || '').split(',')[0].trim();
+    if (d.loc) d.loc.textContent = dest;
     
-    elsDrawer.chatFooter.hidden = false;
+    if (d.chatFooter) d.chatFooter.hidden = false;
     
     // Initial UI state
-    elsDrawer.body.innerHTML = `
-      <div class="vibe-badges">
-        <span class="vibe-badge">Loading Vibes...</span>
-      </div>
-      <div class="chat-stream" id="chat-stream">
-        <div class="chat-bubble chat-ai">
-          Hi! I'm your local insider for ${esc(actData.title)}. What would you like to know about the vibe, crowd, or tips?
+    if (d.body) {
+      d.body.innerHTML = `
+        <div class="vibe-badges">
+          <span class="vibe-badge">Local Insider</span>
+          <span class="vibe-badge">${esc(actData.category || 'Sightseeing')}</span>
         </div>
-      </div>
-      <div class="chat-chips" id="chat-chips">
-        <button class="chat-chip" data-query="Is it good for a date night?">Is it good for a date night?</button>
-        <button class="chat-chip" data-query="What is the dress code?">What is the dress code?</button>
-        <button class="chat-chip" data-query="Are vegan options available?">Are vegan options available?</button>
-        <button class="chat-chip" data-query="What's the crowd like?">What's the crowd like?</button>
-      </div>
-    `;
+        <div class="chat-stream" id="chat-stream">
+          <div class="chat-bubble chat-ai">
+            Hi! I'm your local insider for <strong>${esc(actData.title)}</strong>. What would you like to know about the vibe, crowd, dress code, or tips?
+          </div>
+        </div>
+        <div class="chat-chips" id="chat-chips">
+          <button type="button" class="chat-chip" data-query="Is it good for a date night?">Is it good for a date night?</button>
+          <button type="button" class="chat-chip" data-query="What is the dress code?">What is the dress code?</button>
+          <button type="button" class="chat-chip" data-query="Are vegan or vegetarian options available?">Are vegan/veg options available?</button>
+          <button type="button" class="chat-chip" data-query="What's the best time to visit to avoid crowds?">Best time to visit?</button>
+        </div>
+      `;
+    }
     
-    elsDrawer.overlay.classList.add('open');
-    elsDrawer.drawer.classList.add('open');
-    elsDrawer.chatInput.focus();
+    d.overlay.classList.add('open');
+    d.drawer.classList.add('open');
+    document.body.classList.add('modal-open');
+    if (d.chatInput) setTimeout(() => d.chatInput.focus(), 150);
   }
 
   // Handle sending chat messages
   async function sendChatMessage(query) {
     if (!query || !_drawerContext || _drawerContext.type !== 'chat') return;
     
+    const d = getDrawerEls();
     const stream = document.getElementById('chat-stream');
     const chipsDiv = document.getElementById('chat-chips');
+    if (!stream) return;
     
     // Add user message
     stream.innerHTML += `<div class="chat-bubble chat-user">${esc(query)}</div>`;
-    elsDrawer.chatInput.value = '';
-    chipsDiv.innerHTML = ''; // Clear chips while loading
-    elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
+    if (d.chatInput) d.chatInput.value = '';
+    if (chipsDiv) chipsDiv.innerHTML = ''; // Clear chips while loading
+    if (d.body) d.body.scrollTo({ top: d.body.scrollHeight, behavior: 'smooth' });
     
     // Add loading indicator
     const loadingId = 'loading-' + Date.now();
     stream.innerHTML += `<div class="chat-bubble chat-ai" id="${loadingId}"><i class="fa-solid fa-circle-notch fa-spin"></i> Getting the vibe...</div>`;
-    elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
+    if (d.body) d.body.scrollTo({ top: d.body.scrollHeight, behavior: 'smooth' });
     
     const actData = _drawerContext.data;
     const payload = {
       place_name: actData.title,
-      destination: pickPlan(state.data).destination || '',
+      destination: pickPlan(state.data).destination || (els.wsDestination && els.wsDestination.textContent) || '',
       query: query,
       description: actData.desc,
       category: actData.category,
       chat_history: _drawerContext.history
     };
     
-    // Append to history for next time
     _drawerContext.history.push({ role: 'user', content: query });
     
     try {
       const res = await WayfarerAPI.chatPlace(payload);
       
       // Update vibe tags in header if provided
-      if (res.vibe_tags && res.vibe_tags.length) {
+      if (res.vibe_tags && res.vibe_tags.length && d.body) {
         const badgesHtml = res.vibe_tags.map(t => `<span class="vibe-badge">${esc(t)}</span>`).join('');
-        const badgeContainer = elsDrawer.body.querySelector('.vibe-badges');
+        const badgeContainer = d.body.querySelector('.vibe-badges');
         if (badgeContainer) badgeContainer.innerHTML = badgesHtml;
       }
       
@@ -3435,11 +3126,11 @@ ${custom_notes}`.trim();
       _drawerContext.history.push({ role: 'assistant', content: res.reply });
       
       // Update quick chips
-      if (res.suggested_followups && res.suggested_followups.length) {
-        chipsDiv.innerHTML = res.suggested_followups.map(q => `<button class="chat-chip" data-query="${esc(q)}">${esc(q)}</button>`).join('');
+      if (res.suggested_followups && res.suggested_followups.length && chipsDiv) {
+        chipsDiv.innerHTML = res.suggested_followups.map(q => `<button type="button" class="chat-chip" data-query="${esc(q)}">${esc(q)}</button>`).join('');
       }
       
-      elsDrawer.body.scrollTo({ top: elsDrawer.body.scrollHeight, behavior: 'smooth' });
+      if (d.body) d.body.scrollTo({ top: d.body.scrollHeight, behavior: 'smooth' });
     } catch (err) {
       console.error("Chat error", err);
       const loader = document.getElementById(loadingId);
@@ -3447,64 +3138,77 @@ ${custom_notes}`.trim();
     }
   }
 
-  if (elsDrawer.chatSendBtn) {
-    elsDrawer.chatSendBtn.addEventListener('click', () => sendChatMessage(elsDrawer.chatInput.value.trim()));
-  }
-  if (elsDrawer.chatInput) {
-    elsDrawer.chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(elsDrawer.chatInput.value.trim()); }
-    });
-  }
-  // Delegate clicks for chat chips
+  // Bind chat events
   document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('chat-chip')) {
+    if (e.target.closest('#chat-send-btn')) {
+      const d = getDrawerEls();
+      if (d.chatInput) sendChatMessage(d.chatInput.value.trim());
+    } else if (e.target.classList.contains('chat-chip')) {
       sendChatMessage(e.target.dataset.query);
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.target && e.target.id === 'chat-input-box' && e.key === 'Enter') {
+      e.preventDefault();
+      sendChatMessage(e.target.value.trim());
     }
   });
 
   // Open Replace Drawer
   function openReplaceDrawer(actData) {
+    const d = getDrawerEls();
+    if (!d.drawer || !d.overlay) return;
     _drawerContext = { type: 'replace', data: actData };
     
-    elsDrawer.img.src = actData.imgSrc;
-    elsDrawer.title.textContent = `Replacing: ${actData.title}`;
-    elsDrawer.loc.textContent = `Day ${actData.dayNum} · ${actData.time}`;
+    if (d.img) d.img.src = actData.imgSrc;
+    if (d.title) d.title.textContent = `Replacing: ${actData.title}`;
+    if (d.loc) d.loc.textContent = `Day ${actData.dayNum} · ${actData.time}`;
     
-    elsDrawer.chatFooter.hidden = true;
+    if (d.chatFooter) d.chatFooter.hidden = true;
     
-    elsDrawer.body.innerHTML = `
-      <div class="replace-search-box">
-        <button type="button" class="replace-preprompt" id="btn-preprompt">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> Suggest me some alternatives
-        </button>
-        <div class="replace-or">or</div>
-        <div class="chat-input-area" style="padding:0; border:none; border-radius:999px;">
-          <input type="text" id="replace-input" placeholder="e.g. cozy riverside cafe..." autocomplete="off" />
-          <button type="button" class="chat-send-btn" id="replace-search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
+    if (d.body) {
+      d.body.innerHTML = `
+        <div class="replace-search-box">
+          <button type="button" class="replace-preprompt" id="btn-preprompt">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Suggest me some alternatives
+          </button>
+          <div class="replace-or">or</div>
+          <div class="chat-input-area" style="padding:0; border:none; border-radius:999px;">
+            <input type="text" id="replace-input" placeholder="e.g. cozy riverside cafe..." autocomplete="off" />
+            <button type="button" class="chat-send-btn" id="replace-search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
+          </div>
         </div>
-      </div>
-      <div id="replace-results" style="display:flex; flex-direction:column; gap:16px;"></div>
-    `;
+        <div id="replace-results" style="display:flex; flex-direction:column; gap:16px;"></div>
+      `;
+    }
     
-    elsDrawer.overlay.classList.add('open');
-    elsDrawer.drawer.classList.add('open');
+    d.overlay.classList.add('open');
+    d.drawer.classList.add('open');
+    document.body.classList.add('modal-open');
     
-    document.getElementById('btn-preprompt').addEventListener('click', () => doReplaceSearch(''));
-    document.getElementById('replace-search-btn').addEventListener('click', () => {
-      const val = document.getElementById('replace-input').value.trim();
-      if (val) doReplaceSearch(val);
-    });
-    document.getElementById('replace-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const val = e.target.value.trim();
+    const preBtn = document.getElementById('btn-preprompt');
+    if (preBtn) preBtn.addEventListener('click', () => doReplaceSearch(''));
+    const searchBtn = document.getElementById('replace-search-btn');
+    const replaceInput = document.getElementById('replace-input');
+    if (searchBtn && replaceInput) {
+      searchBtn.addEventListener('click', () => {
+        const val = replaceInput.value.trim();
         if (val) doReplaceSearch(val);
-      }
-    });
+      });
+      replaceInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const val = e.target.value.trim();
+          if (val) doReplaceSearch(val);
+        }
+      });
+      setTimeout(() => replaceInput.focus(), 150);
+    }
   }
 
   async function doReplaceSearch(pref) {
     const resDiv = document.getElementById('replace-results');
+    if (!resDiv || !_drawerContext) return;
     resDiv.innerHTML = `<div style="text-align:center; padding: 40px; color: var(--brand-ink);"><i class="fa-solid fa-circle-notch fa-spin fa-2x"></i><p style="margin-top:10px;font-weight:600;">Finding unique alternatives...</p></div>`;
     
     const actData = _drawerContext.data;
@@ -3525,7 +3229,6 @@ ${custom_notes}`.trim();
         return;
       }
       
-      // Store globally for the swap button to access
       window._replaceAlts = res.alternatives;
       
       let html = '';
@@ -3556,12 +3259,15 @@ ${custom_notes}`.trim();
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('btn-swap')) {
       const idx = parseInt(e.target.dataset.altIdx, 10);
-      const alt = window._replaceAlts[idx];
+      const alt = window._replaceAlts && window._replaceAlts[idx];
       if (!alt || !_drawerContext || _drawerContext.type !== 'replace') return;
       
       const actData = _drawerContext.data;
       const finalPlan = pickPlan(state.data);
-      const day = finalPlan.days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
+      if (!finalPlan) return;
+      const days = findDays(finalPlan);
+      const day = days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
+      if (!day || !day.activities) return;
       
       // Perform the swap
       const newAct = {
@@ -3576,9 +3282,8 @@ ${custom_notes}`.trim();
       
       closeDrawer();
       toast(`Swapped in ${esc(alt.title)}!`, 'ok');
-      loadFinal(false); // Re-render itinerary and map
+      renderFinal(state.data); // Re-render modified plan locally
     }
   });
-
 
 })();

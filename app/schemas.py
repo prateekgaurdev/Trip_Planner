@@ -188,6 +188,18 @@ class JourneyCorridorSchema(BaseModel):
         default="",
         description="Logistical advice for final-day check-out and return transit back to origin."
     )
+    departure_airport: str | None = Field(
+        default=None,
+        description="Resolved commercial departure airport with IATA and distance (e.g. 'Indira Gandhi Int\'l (DEL) · 14 km from center')."
+    )
+    arrival_airport: str | None = Field(
+        default=None,
+        description="Resolved commercial arrival airport with IATA and distance (e.g. 'Dehradun Airport (DED) · 15 km transfer')."
+    )
+    arrival_airport_distance_km: int | None = Field(
+        default=None,
+        description="Distance from arrival airport to destination lodging anchor in kilometers."
+    )
     grounded_route_facts: list[str] = Field(
         default_factory=list,
         description="Grounded route and transit facts retrieved from RAG and live web search."
@@ -212,6 +224,34 @@ class ResearchResultSchema(BaseModel):
     )
 
 
+class PlannerActivitySchema(BaseModel):
+    time: str = Field(
+        default="",
+        description="Scheduled time of the activity in 12-hour AM/PM format (e.g. '09:30 AM', '01:30 PM', '07:30 PM')."
+    )
+    title: str = Field(description="Clear, concise landmark or activity title (e.g. 'Beatles Ashram Meditation Ruins').")
+    description: str = Field(
+        default="",
+        description="Rich 2-3 sentence overview describing the experience, what to do/order, and practical insider tips."
+    )
+    location_name: str = Field(
+        default="",
+        description="Official landmark/venue name for mapping and navigation (e.g. 'Beatles Ashram')."
+    )
+    opening_hours: str = Field(
+        default="",
+        description="Operating hours if applicable (e.g. '09:00 AM – 04:30 PM' or 'Open 24/7')."
+    )
+    estimated_cost: str = Field(
+        default="",
+        description="Expected cost or entry fee (e.g. 'Free', '₹600 entry', '₹400 meal')."
+    )
+    estimated_duration: str = Field(
+        default="",
+        description="Recommended time to spend (e.g. '1.5 hrs', '45 mins', '2 hrs')."
+    )
+
+
 class PlannerDaySchema(BaseModel):
     day_number: int = Field(description="1-based day index of the trip.")
     date: str = Field(description="ISO-formatted date string.")
@@ -221,8 +261,8 @@ class PlannerDaySchema(BaseModel):
         description="Primary geographic district/neighborhood for this day's activities."
     )
     weather_note: str = Field(default="", description="Weather context or notes for this day.")
-    activities: list[str] = Field(
-        description="List of 2-4 specific activity titles/experiences clustered in the day's neighborhood."
+    activities: list[PlannerActivitySchema | str] = Field(
+        description="List of 3-5 structured activities for the day, beginning with morning departure from the lodging anchor and concluding with evening return to the lodging anchor."
     )
 
 
@@ -247,11 +287,14 @@ class PlannerResultSchema(BaseModel):
 
 
 class FinalizeActivitySchema(BaseModel):
-    time: str = Field(description="Time of activity in HH:MM format.")
+    time: str = Field(description="Time of activity in 12-hour AM/PM format (e.g. 09:30 AM).")
     title: str = Field(description="Short descriptive title of the activity.")
-    description: str = Field(description="Detailed 1-2 sentence description of what the activity entails.")
+    description: str = Field(description="Detailed 2-3 sentence description of what the activity entails with tips.")
     location_name: str = Field(description="Official name of the venue/landmark for mapping.")
     neighborhood: str = Field(default="", description="District or neighborhood.")
+    opening_hours: str = Field(default="", description="Operating hours if known (e.g. '06:00 AM – 08:30 PM').")
+    estimated_cost: str = Field(default="", description="Cost e.g. 'Free' or '₹50 entry'.")
+    estimated_duration: str = Field(default="", description="Time spent e.g. '1.5 hrs'.")
     activity_type: Literal["lodging", "sightseeing", "dining", "culture", "relaxation", "transit"] = Field(
         default="sightseeing", description="Category of activity."
     )
