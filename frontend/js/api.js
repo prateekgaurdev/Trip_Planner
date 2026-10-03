@@ -257,10 +257,11 @@ const WayfarerAPI = (() => {
     },
 
     /** POST /plan/{id}/review (JSON fallback) */
-    review(id, action, feedback, travelSelections) {
+    review(id, action, feedback, travelSelections, customizedDays) {
       const body = { action };
       if (feedback != null && feedback !== '') body.feedback = feedback;
       if (travelSelections) body.travel_selections = travelSelections;
+      if (customizedDays) body.customized_days = customizedDays;
       return request(`/plan/${encodeURIComponent(id)}/review`, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -271,10 +272,19 @@ const WayfarerAPI = (() => {
      * POST /plan/{id}/review/stream — resume + SSE stream.
      * Returns { abort() } so the caller can cancel.
      */
-    reviewSSE(id, action, feedback, travelSelections, onEvent, onError, onDone) {
+    reviewSSE(id, action, feedback, travelSelections, customizedDays, onEvent, onError, onDone) {
+      // Support signature if customizedDays omitted
+      let _onEvent = onEvent, _onError = onError, _onDone = onDone;
+      if (typeof customizedDays === 'function') {
+        _onDone = _onError;
+        _onError = _onEvent;
+        _onEvent = customizedDays;
+        customizedDays = null;
+      }
       const reqBody = { action };
       if (feedback != null && feedback !== '') reqBody.feedback = feedback;
       if (travelSelections) reqBody.travel_selections = travelSelections;
+      if (customizedDays) reqBody.customized_days = customizedDays;
 
       const ctrl = new AbortController();
       fetch(url(`/plan/${encodeURIComponent(id)}/review/stream`), {
@@ -289,14 +299,14 @@ const WayfarerAPI = (() => {
             try { detail = JSON.parse(txt).detail || txt; } catch {}
             const err = new Error(detail || `SSE review failed (${res.status})`);
             err.status = res.status;
-            onError?.(err);
+            _onError?.(err);
           });
           return;
         }
-        _readSSEStream(res, onEvent, onError, onDone);
+        _readSSEStream(res, _onEvent, _onError, _onDone);
       }).catch((err) => {
         if (err.name !== 'AbortError') {
-          onError?.(err);
+          _onError?.(err);
         }
       });
       return { abort: () => ctrl.abort() };
@@ -407,4 +417,8 @@ const WayfarerAPI = (() => {
     },
   };
 })();
+
+if (typeof window !== 'undefined') {
+  window.WayfarerAPI = WayfarerAPI;
+}
 

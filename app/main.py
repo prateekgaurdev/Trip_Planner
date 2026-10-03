@@ -364,6 +364,7 @@ async def review_plan(plan_id: str, req: ReviewRequest) -> PlanStateResponse:
         "action": req.action,
         "feedback": req.feedback,
         "travel_selections": req.travel_selections,
+        "customized_days": req.customized_days,
     }
     sel = req.travel_selections or {}
     hitl_resume(
@@ -557,6 +558,7 @@ async def review_plan_sse(plan_id: str, req: ReviewRequest, request: Request):
         "action": req.action,
         "feedback": req.feedback,
         "travel_selections": req.travel_selections,
+        "customized_days": req.customized_days,
     }
     sel = req.travel_selections or {}
     hitl_resume(

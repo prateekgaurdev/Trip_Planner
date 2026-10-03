@@ -82,6 +82,10 @@ class ReviewRequest(BaseModel):
         None,
         description="Optional flight/hotel picks on approve: {flight: offer|null, hotel: offer|null}.",
     )
+    customized_days: list[dict[str, Any]] | None = Field(
+        None,
+        description="Optional human-customized schedule days (after swaps or removals in HITL gate).",
+    )
 
     @model_validator(mode="after")
     def _feedback_required(self) -> "ReviewRequest":

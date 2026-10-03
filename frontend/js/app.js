@@ -14,6 +14,7 @@
 
   // ─── State ──────────────────────────────────────────────
   const SESSION_KEY = 'wayfarer_session';
+  const _imageStore = new Map();
   const state = {
     planId: null,
     status: null,
@@ -935,6 +936,7 @@ ${custom_notes}`.trim();
 
   function handleState(data) {
     if (!data) return;
+    state.data = data;
     const status = data.status || data.plan_status;
     const progress = data.progress_message || data.progressMessage || '';
     const prevStatus = state.status;
@@ -1186,6 +1188,13 @@ ${custom_notes}`.trim();
 
     try {
       const travelSelections = action === 'approve' ? getTravelSelectionsForApprove() : null;
+      let customizedDays = null;
+      if (action === 'approve') {
+        const currentPlan = pickPlan(state.data);
+        if (currentPlan && Array.isArray(currentPlan.days)) {
+          customizedDays = currentPlan.days;
+        }
+      }
 
       stopSSEStream();
       stopPolling();
@@ -1195,6 +1204,7 @@ ${custom_notes}`.trim();
         action,
         feedback,
         travelSelections,
+        customizedDays,
         (event) => { handleSSEEvent(event); },
         (err) => {
           // SSE review failed — fall back to JSON review + polling
@@ -1202,7 +1212,7 @@ ${custom_notes}`.trim();
           stopSSEStream();
           (async () => {
             try {
-              const data = await WayfarerAPI.review(state.planId, action, feedback, travelSelections);
+              const data = await WayfarerAPI.review(state.planId, action, feedback, travelSelections, customizedDays);
               handleState(data);
               startPolling();
             } catch (fallbackErr) {
@@ -1261,7 +1271,8 @@ ${custom_notes}`.trim();
 
   // ─── Rendering (defensive: handles several shapes) ──────
   function renderDraft(data) {
-    const plan = pickPlan(data);
+    if (data) state.data = data;
+    const plan = pickPlan(data || state.data);
     const dest = plan.destination || els.wsDestination.textContent || (data.preferences && data.preferences.destination) || '';
     els.itinerary.innerHTML = renderPlanHTML(plan, false, data);
     const mapData = plan.route_map || data.route_map || (data.draft_itinerary && data.draft_itinerary.route_map);
@@ -1948,9 +1959,9 @@ ${custom_notes}`.trim();
     if (finalCost) specs.push(`<span class="a-spec-badge spec-cost"><i class="fa-solid fa-ticket"></i> ${esc(finalCost)}</span>`);
     const specsHTML = specs.length ? `<div class="a-specs-row">${specs.join('')}</div>` : '';
 
-    // Add hover actions for final itinerary (not draft)
+    // Action buttons appear during the HITL review gate, NOT in the finalized itinerary
     let hoverActions = '';
-    if (!isDraft && dayNum !== undefined && actIdx !== undefined) {
+    if (isDraft && dayNum !== undefined && actIdx !== undefined) {
       hoverActions = `
       <div class="activity-hover-actions">
         <button type="button" class="action-btn btn-chat" data-action="chat" data-day="${dayNum}" data-idx="${actIdx}" title="Talk to this place">
@@ -1965,20 +1976,22 @@ ${custom_notes}`.trim();
       </div>`;
     }
 
-    return `<div class="activity"${activityAttrs}>
+    return `<div class="activity"${activityAttrs} data-day="${dayNum}" data-idx="${actIdx}" id="act-card-${dayNum}-${actIdx}">
       ${hoverActions}
-      <span class="a-time"><span class="a-time-pill"><i class="fa-regular fa-clock"></i> ${esc(time)}</span></span>
-      <div class="a-body">
-        <div class="a-text">
-          <p class="a-title">${titleHTML}</p>
-          <p class="a-desc">${esc(desc)}</p>
-          ${specsHTML}
-          ${travelHTML}
+      <div class="activity-main-content">
+        <span class="a-time"><span class="a-time-pill"><i class="fa-regular fa-clock"></i> ${esc(time)}</span></span>
+        <div class="a-body">
+          <div class="a-text">
+            <p class="a-title">${titleHTML}</p>
+            <p class="a-desc">${esc(desc)}</p>
+            ${specsHTML}
+            ${travelHTML}
+          </div>
+          ${imgHTML}
         </div>
-        ${imgHTML}
       </div>
+      <div class="activity-inline-widget" id="inline-widget-${dayNum}-${actIdx}" style="display:none;"></div>
     </div>`;
-  }
   }
 
   function weatherText(w) {
@@ -2888,83 +2901,242 @@ ${custom_notes}`.trim();
     init();
   }
 
-  // ─── Slide-Out Drawer Logic (Chat / Replace / Remove) ─────────────
-  function getDrawerEls() {
-    return {
-      overlay: document.getElementById('drawer-overlay'),
-      drawer: document.getElementById('side-drawer'),
-      closeBtn: document.getElementById('drawer-close'),
-      img: document.getElementById('drawer-img'),
-      title: document.getElementById('drawer-title'),
-      loc: document.getElementById('drawer-loc'),
-      body: document.getElementById('drawer-body'),
-      chatFooter: document.getElementById('drawer-footer-chat'),
-      chatInput: document.getElementById('chat-input-box'),
-      chatSendBtn: document.getElementById('chat-send-btn')
-    };
+  // ─── Intelligent Timing & Distance Recalculation Engine ─────────
+  function parseTimeMinutes(tStr) {
+    if (!tStr) return 9 * 60;
+    const m = String(tStr).trim().match(/(\d+):(\d+)\s*(AM|PM)?/i);
+    if (!m) return 9 * 60;
+    let h = parseInt(m[1], 10);
+    const mins = parseInt(m[2], 10);
+    const ampm = m[3] ? m[3].toUpperCase() : null;
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return h * 60 + mins;
   }
 
-  let _drawerContext = null;
-
-  function closeDrawer() {
-    const d = getDrawerEls();
-    if (d.overlay) d.overlay.classList.remove('open');
-    if (d.drawer) d.drawer.classList.remove('open');
-    document.body.classList.remove('modal-open');
-    _drawerContext = null;
+  function formatTimeMinutes(totalMins) {
+    const h24 = Math.floor(totalMins / 60) % 24;
+    const mins = Math.floor(totalMins % 60);
+    const ampm = h24 >= 12 ? 'PM' : 'AM';
+    let h12 = h24 % 12;
+    if (h12 === 0) h12 = 12;
+    const mStr = mins < 10 ? '0' + mins : String(mins);
+    const hStr = h12 < 10 ? '0' + h12 : String(h12);
+    return `${hStr}:${mStr} ${ampm}`;
   }
 
-  // Global listeners for closing drawer
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('#drawer-close') || e.target.id === 'drawer-overlay') {
-      closeDrawer();
+  function getEstimatedDuration(act) {
+    if (!act) return 90;
+    const cat = (act.category || act.activity_type || '').toLowerCase();
+    const title = (act.title || act.name || '').toLowerCase();
+    if (cat.includes('din') || cat.includes('food') || cat.includes('eat') || title.includes('lunch') || title.includes('dinner') || title.includes('cafe')) {
+      return 60;
     }
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      closeDrawer();
-      document.body.classList.remove('modal-open');
-      const am = document.getElementById('auth-modal');
-      if (am) am.hidden = true;
-      const sm = document.getElementById('share-modal');
-      if (sm) sm.hidden = true;
+    if (cat.includes('lodg') || title.includes('check-in') || title.includes('hotel')) {
+      return 45;
     }
-  });
+    if (cat.includes('nature') || cat.includes('trek') || cat.includes('temple') || title.includes('waterfall') || title.includes('hike')) {
+      return 120;
+    }
+    return 90;
+  }
 
-  // Extract activity from plan state
-  function getActivityData(dayNum, idx) {
+  function recalculateDayScheduleAndDistances(day, dayRoute, plan) {
+    if (!day || !Array.isArray(day.activities) || !day.activities.length) {
+      if (dayRoute) {
+        dayRoute.distance_km = 0;
+        dayRoute.duration_minutes = 0;
+        dayRoute.legs = [];
+      }
+      return;
+    }
+
+    const acts = day.activities;
+    const markers = (dayRoute && dayRoute.markers) || [];
+
+    function findCoords(act) {
+      if (!act) return null;
+      const target = (act.location_name || act.title || '').trim().toLowerCase();
+      const m = markers.find(mk => {
+        const titleL = (mk.title || mk.label || mk.name || '').toLowerCase();
+        return titleL.includes(target) || target.includes(titleL);
+      });
+      return m ? { lat: m.lat, lon: m.lon } : null;
+    }
+
+    function haversineDist(p1, p2) {
+      const R = 6371;
+      const dLat = (p2.lat - p1.lat) * Math.PI / 180;
+      const dLon = (p2.lon - p1.lon) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // Start of day time: default 09:00 AM or original first activity time
+    let curMins = parseTimeMinutes(acts[0].time || '09:00 AM');
+    let cumulativeKm = 0.0;
+    let totalTransitMin = 0;
+    const newLegs = [];
+
+    for (let i = 0; i < acts.length; i++) {
+      const act = acts[i];
+      if (typeof act !== 'object') continue;
+
+      if (i === 0) {
+        act.time = formatTimeMinutes(curMins);
+        act.cumulative_distance_km = 0.0;
+        act.travel_from_prev = null;
+      } else {
+        const prevAct = acts[i - 1];
+        const p1 = findCoords(prevAct);
+        const p2 = findCoords(act);
+
+        let distKm = 2.0; // standard logical district hop
+        if (p1 && p2) {
+          const rawDist = haversineDist(p1, p2);
+          if (rawDist > 0.05 && rawDist < 50) distKm = Math.round(rawDist * 10) / 10;
+        } else if (prevAct.travel_from_prev && prevAct.travel_from_prev.distance_km) {
+          distKm = Math.round((prevAct.travel_from_prev.distance_km * 0.9) * 10) / 10 || 1.8;
+        }
+
+        const isWalking = distKm <= 2.2;
+        const transitMin = isWalking ? Math.max(6, Math.round(distKm * 13)) : Math.max(8, Math.round(distKm * 3.2));
+        const mode = isWalking ? 'walking' : 'driving';
+
+        curMins += transitMin;
+        totalTransitMin += transitMin;
+        cumulativeKm += distKm;
+
+        act.time = formatTimeMinutes(curMins);
+        act.cumulative_distance_km = Math.round(cumulativeKm * 10) / 10;
+        act.travel_from_prev = {
+          distance_km: Math.round(distKm * 10) / 10,
+          duration_minutes: transitMin,
+          mode: mode,
+        };
+
+        newLegs.push({
+          distance_km: Math.round(distKm * 10) / 10,
+          duration_minutes: transitMin,
+          mode: mode,
+        });
+      }
+
+      // Add activity stay duration
+      const dur = getEstimatedDuration(act);
+      curMins += dur;
+    }
+
+    if (dayRoute) {
+      dayRoute.distance_km = Math.round(cumulativeKm * 10) / 10;
+      dayRoute.duration_minutes = totalTransitMin;
+      if (newLegs.length) dayRoute.legs = newLegs;
+    }
+
+    // Update overall route_map totals
+    if (plan && plan.route_map && Array.isArray(plan.route_map.days)) {
+      let totKm = 0;
+      let totMins = 0;
+      plan.route_map.days.forEach(d => {
+        totKm += Number(d.distance_km || 0);
+        totMins += Number(d.duration_minutes || 0);
+      });
+      plan.route_map.totals = {
+        distance_km: Math.round(totKm * 10) / 10,
+        duration_minutes: totMins,
+      };
+    }
+  }
+
+  // ─── Inline Activity Card Contextual Chatbot & Replacer ────────────
+  function closeAllInlineWidgets() {
+    document.querySelectorAll('.activity.has-inline-chat-open').forEach(card => {
+      card.classList.remove('has-inline-chat-open');
+      const w = card.querySelector('.activity-inline-widget');
+      if (w) {
+        w.style.display = 'none';
+        w.innerHTML = '';
+      }
+    });
+  }
+
+  function reRenderActivePlan() {
+    if (state.status === 'awaiting_review' || !state.data?.final_plan) {
+      renderDraft(state.data);
+      showReviewGate(true);
+    } else {
+      renderFinal(state.data);
+    }
+  }
+
+  // Extract activity from plan state with DOM card fallback
+  function getActivityData(dayNum, idx, cardEl) {
     const finalPlan = pickPlan(state.data);
-    if (!finalPlan) return null;
-    const days = findDays(finalPlan);
-    const day = days.find(d => (d.day ?? d.day_number ?? d.index) == dayNum);
-    if (!day || !day.activities || !day.activities[idx]) return null;
-    const act = day.activities[idx];
-    
+    let day = null;
+    let act = null;
+
+    if (finalPlan) {
+      const days = findDays(finalPlan);
+      day = days.find((d, dIdx) => (d.day ?? d.day_number ?? d.index ?? (dIdx + 1)) == dayNum);
+      if (day && day.activities && day.activities[idx]) {
+        act = day.activities[idx];
+      }
+    }
+
     let title = ''; let locationName = ''; let time = ''; let desc = ''; let category = '';
     if (typeof act === 'string') {
       title = act.trim();
-    } else {
+    } else if (act && typeof act === 'object') {
       time = act.time || act.start || act.when || act.period || '';
       title = (act.title || act.name || act.activity || act.label || '').trim();
       locationName = (act.location_name || act.location || extractLandmarkKeyword(title) || title).trim();
       desc = act.description || act.detail || act.notes || '';
       category = act.category || '';
     }
-    
+
+    // Bulletproof fallback from DOM card if act was not in state.data
+    if (!title && cardEl) {
+      const tEl = cardEl.querySelector('.a-title a span') || cardEl.querySelector('.a-title a') || cardEl.querySelector('.a-title');
+      const dEl = cardEl.querySelector('.a-desc');
+      const timeEl = cardEl.querySelector('.a-time-pill') || cardEl.querySelector('.a-time');
+      title = (tEl ? (tEl.textContent || '').trim() : '') || (cardEl.dataset.title || 'Activity');
+      desc = dEl ? (dEl.textContent || '').trim() : '';
+      time = timeEl ? (timeEl.textContent || '').trim() : '';
+      locationName = cardEl.dataset.location || extractLandmarkKeyword(title) || title;
+    }
+
+    if (!title) return null;
+
     const searchTarget = locationName || title;
     const imgKey = activityImageKey(title, searchTarget);
-    const imgSrc = _imageStore.get(imgKey) || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=480&q=80';
-    
-    return { title, locationName, time, desc, category, searchTarget, imgSrc, actObj: act, dayNum, idx };
+    let imgSrc = null;
+    if (state.imageUrlCache && state.imageUrlCache[imgKey]) {
+      imgSrc = state.imageUrlCache[imgKey];
+    }
+    if (!imgSrc && _imageStore && _imageStore.has(imgKey)) {
+      imgSrc = _imageStore.get(imgKey);
+    }
+    if (!imgSrc && cardEl) {
+      const imgEl = cardEl.querySelector('.a-image img');
+      if (imgEl && imgEl.src) imgSrc = imgEl.src;
+    }
+    if (!imgSrc && act && typeof act === 'object' && act.image_url) {
+      imgSrc = act.image_url;
+    }
+    if (!imgSrc) {
+      imgSrc = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=480&q=80';
+    }
+
+    return { title, locationName, time, desc, category, searchTarget, imgSrc, actObj: act, dayNum, idx, day, cardEl };
   }
 
-  // Get all existing places across itinerary
   function getExistingPlaces() {
     const places = [];
     const finalPlan = pickPlan(state.data);
     if (!finalPlan) return places;
     const days = findDays(finalPlan);
-    
     days.forEach(day => {
       if (!day.activities) return;
       day.activities.forEach(act => {
@@ -2977,312 +3149,344 @@ ${custom_notes}`.trim();
     return places;
   }
 
-  // Delegate clicks for hover actions (chat, replace, remove)
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.action-btn');
-    if (!btn) return;
-    
-    const action = btn.dataset.action;
-    const dayNum = parseInt(btn.dataset.day, 10);
-    const idx = parseInt(btn.dataset.idx, 10);
-    
-    const actData = getActivityData(dayNum, idx);
-    if (!actData) return;
-    
-    if (action === 'remove') {
-      handleRemove(actData);
-    } else if (action === 'replace') {
-      openReplaceDrawer(actData);
-    } else if (action === 'chat') {
-      openChatDrawer(actData);
+  // 1. Open Inline Chat Mode
+  function openInlineCardChat(actData, cardEl) {
+    const card = cardEl || document.getElementById(`act-card-${actData.dayNum}-${actData.idx}`);
+    if (!card) return;
+    let widget = card.querySelector('.activity-inline-widget') || document.getElementById(`inline-widget-${actData.dayNum}-${actData.idx}`);
+    if (!widget) {
+      widget = document.createElement('div');
+      widget.className = 'activity-inline-widget';
+      widget.id = `inline-widget-${actData.dayNum}-${actData.idx}`;
+      card.appendChild(widget);
     }
-  });
 
-  // Handle Remove
-  let _lastRemoved = null; // For undo
-  function handleRemove(actData) {
-    const finalPlan = pickPlan(state.data);
-    if (!finalPlan) return;
-    const days = findDays(finalPlan);
-    const day = days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
-    if (!day || !day.activities) return;
-    
-    // Save for undo
-    _lastRemoved = {
-      dayNum: actData.dayNum,
-      idx: actData.idx,
-      actObj: day.activities[actData.idx]
-    };
-    
-    // Remove from array
-    day.activities.splice(actData.idx, 1);
-    
-    // Update UI without re-fetching from server
-    toast(`Removed "${esc(actData.title)}" from Day ${actData.dayNum}. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
-    
-    renderFinal(state.data); // Re-render modified plan locally
+    const isAlreadyOpen = card.classList.contains('has-inline-chat-open') && widget.dataset.mode === 'chat';
+    closeAllInlineWidgets();
+    if (isAlreadyOpen) return;
+
+    card.classList.add('has-inline-chat-open');
+    widget.dataset.mode = 'chat';
+    widget.style.display = 'flex';
+
+    const history = [];
+    widget.innerHTML = `
+      <div class="inline-widget-header">
+        <div class="inline-widget-title-wrap">
+          <i class="fa-solid fa-comments"></i>
+          <div class="inline-widget-title">Insider: ${esc(actData.title)}</div>
+        </div>
+        <button type="button" class="inline-widget-close" title="Close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="inline-widget-stream" id="inline-stream-${actData.dayNum}-${actData.idx}">
+        <div class="inline-chat-bubble inline-chat-ai">
+          Hi! I'm your local guide for <strong>${esc(actData.title)}</strong>. Ask me anything about the vibe, dress code, crowds, or hidden spots!
+        </div>
+      </div>
+      <div class="inline-chips-row">
+        <button type="button" class="inline-chip-btn" data-q="Is it good for a date night?">🍷 Date night?</button>
+        <button type="button" class="inline-chip-btn" data-q="What is the dress code?">👔 Dress code?</button>
+        <button type="button" class="inline-chip-btn" data-q="What is the best time to avoid crowds?">🕒 Best time?</button>
+        <button type="button" class="inline-chip-btn" data-q="Any secret photo spots nearby?">📸 Photo spots?</button>
+      </div>
+      <div class="inline-widget-input-bar">
+        <input type="text" placeholder="Ask about this place..." autocomplete="off" />
+        <button type="button" class="inline-widget-send-btn" title="Send message"><i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+    `;
+
+    const stream = widget.querySelector('.inline-widget-stream');
+    const input = widget.querySelector('input');
+    const sendBtn = widget.querySelector('.inline-widget-send-btn');
+    const closeBtn = widget.querySelector('.inline-widget-close');
+
+    closeBtn.addEventListener('click', closeAllInlineWidgets);
+
+    async function sendMsg(query) {
+      if (!query || !query.trim()) return;
+      const q = query.trim();
+      input.value = '';
+
+      // User bubble
+      const userBubble = document.createElement('div');
+      userBubble.className = 'inline-chat-bubble inline-chat-user';
+      userBubble.textContent = q;
+      stream.appendChild(userBubble);
+
+      // Loading bubble
+      const loadingBubble = document.createElement('div');
+      loadingBubble.className = 'inline-chat-bubble inline-chat-ai';
+      loadingBubble.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Getting local vibe...';
+      stream.appendChild(loadingBubble);
+      stream.scrollTop = stream.scrollHeight;
+
+      history.push({ role: 'user', content: q });
+
+      try {
+        const dest = (pickPlan(state.data).destination || (els.wsDestination && els.wsDestination.textContent) || '').split(',')[0].trim();
+        const res = await WayfarerAPI.chatPlace({
+          place_name: actData.title,
+          destination: dest,
+          query: q,
+          description: actData.desc,
+          category: actData.category,
+          chat_history: history,
+        });
+
+        loadingBubble.textContent = res.reply || 'Great spot with vibrant atmosphere!';
+        history.push({ role: 'assistant', content: res.reply });
+      } catch (err) {
+        loadingBubble.innerHTML = '<span style="color:var(--bad);">Could not fetch vibe. Please try again.</span>';
+      }
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    sendBtn.addEventListener('click', () => sendMsg(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendMsg(input.value);
+      }
+    });
+
+    widget.querySelectorAll('.inline-chip-btn').forEach(btn => {
+      btn.addEventListener('click', () => sendMsg(btn.dataset.q));
+    });
+
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => input.focus(), 150);
   }
-  
+
+  // 2. Open Inline Replace Mode
+  function openInlineCardReplace(actData, cardEl) {
+    const card = cardEl || document.getElementById(`act-card-${actData.dayNum}-${actData.idx}`);
+    if (!card) return;
+    let widget = card.querySelector('.activity-inline-widget') || document.getElementById(`inline-widget-${actData.dayNum}-${actData.idx}`);
+    if (!widget) {
+      widget = document.createElement('div');
+      widget.className = 'activity-inline-widget';
+      widget.id = `inline-widget-${actData.dayNum}-${actData.idx}`;
+      card.appendChild(widget);
+    }
+
+    const isAlreadyOpen = card.classList.contains('has-inline-chat-open') && widget.dataset.mode === 'replace';
+    closeAllInlineWidgets();
+    if (isAlreadyOpen) return;
+
+    card.classList.add('has-inline-chat-open');
+    widget.dataset.mode = 'replace';
+    widget.style.display = 'flex';
+
+    widget.innerHTML = `
+      <div class="inline-widget-header">
+        <div class="inline-widget-title-wrap">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          <div class="inline-widget-title">Replace: ${esc(actData.title)}</div>
+        </div>
+        <button type="button" class="inline-widget-close" title="Close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="inline-widget-stream" id="inline-stream-${actData.dayNum}-${actData.idx}">
+        <div class="inline-chat-bubble inline-chat-ai">
+          What kind of place would you like for Day ${actData.dayNum} (${esc(actData.time || 'Daytime')})? Pick a vibe below or describe your preference:
+        </div>
+        <div class="inline-chips-row" style="margin-top:6px;">
+          <button type="button" class="inline-chip-btn replace-chip" data-pref="Cozy riverside or scenic cafe with good food">☕ Cozy Cafe</button>
+          <button type="button" class="inline-chip-btn replace-chip" data-pref="Peaceful nature hike or scenic viewpoint">🌿 Nature &amp; Views</button>
+          <button type="button" class="inline-chip-btn replace-chip" data-pref="Historic temple or cultural heritage landmark">🏛️ Cultural Site</button>
+          <button type="button" class="inline-chip-btn replace-chip" data-pref="Authentic street food market or local dining">🍲 Food &amp; Dining</button>
+          <button type="button" class="inline-chip-btn replace-chip" data-pref="Serene yoga or quiet meditation spot">🧘 Wellness &amp; Peace</button>
+        </div>
+        <div id="inline-replace-results-${actData.dayNum}-${actData.idx}" style="display:flex; flex-direction:column; gap:10px; margin-top:10px;"></div>
+      </div>
+      <div class="inline-widget-input-bar">
+        <input type="text" placeholder="e.g. peaceful rooftop cafe..." autocomplete="off" />
+        <button type="button" class="inline-widget-send-btn" title="Find alternatives"><i class="fa-solid fa-magnifying-glass"></i></button>
+      </div>
+    `;
+
+    const stream = widget.querySelector('.inline-widget-stream');
+    const input = widget.querySelector('input');
+    const searchBtn = widget.querySelector('.inline-widget-send-btn');
+    const closeBtn = widget.querySelector('.inline-widget-close');
+    const resultsDiv = widget.querySelector(`#inline-replace-results-${actData.dayNum}-${actData.idx}`);
+
+    closeBtn.addEventListener('click', closeAllInlineWidgets);
+
+    async function searchAlternatives(pref) {
+      resultsDiv.innerHTML = `
+        <div style="text-align:center; padding: 20px; color: var(--brand);">
+          <i class="fa-solid fa-circle-notch fa-spin fa-lg"></i>
+          <p style="margin-top:8px; font-weight:700; font-size:0.84rem;">Finding unique alternatives...</p>
+        </div>`;
+      stream.scrollTop = stream.scrollHeight;
+
+      const payload = {
+        current_place: actData.title,
+        destination: (pickPlan(state.data).destination || (els.wsDestination && els.wsDestination.textContent) || '').split(',')[0].trim(),
+        time_slot: actData.time || 'Daytime',
+        day_number: actData.dayNum,
+        user_preference: pref || 'Highly rated local alternative',
+        existing_places: getExistingPlaces(),
+      };
+
+      try {
+        const res = await WayfarerAPI.replacePlace(payload);
+        const alts = res.alternatives || [];
+        if (!alts.length) {
+          resultsDiv.innerHTML = '<p style="text-align:center; color:var(--bad); font-size:0.85rem;">No alternatives found. Try another request.</p>';
+          return;
+        }
+
+        resultsDiv.innerHTML = alts.map((alt, i) => `
+          <div class="inline-alt-card">
+            <div class="inline-alt-head">
+              <h5 class="inline-alt-title">${esc(alt.title)}</h5>
+              ${alt.estimated_cost != null ? `<span class="inline-alt-cost">${money(alt.estimated_cost)}</span>` : ''}
+            </div>
+            <p class="inline-alt-desc">${esc(alt.description)}</p>
+            <button type="button" class="inline-alt-swap-btn" data-swap-idx="${i}">
+              <i class="fa-solid fa-arrows-rotate"></i> Swap with this
+            </button>
+          </div>
+        `).join('');
+
+        // Bind swap buttons
+        resultsDiv.querySelectorAll('.inline-alt-swap-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.swapIdx, 10);
+            const chosen = alts[idx];
+            if (!chosen) return;
+
+            // Perform swap
+            const newAct = {
+              title: chosen.title,
+              location_name: chosen.location_name || chosen.title,
+              time: chosen.time || actData.time,
+              description: chosen.description,
+              cost: chosen.estimated_cost,
+              category: chosen.category || 'Sightseeing',
+            };
+
+            const finalPlan = pickPlan(state.data);
+            const days = findDays(finalPlan);
+            const day = days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
+            const dayRoute = finalPlan.route_map && Array.isArray(finalPlan.route_map.days)
+              ? finalPlan.route_map.days.find(d => d.day_number == actData.dayNum)
+              : null;
+
+            if (day && day.activities) {
+              day.activities[actData.idx] = newAct;
+              recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
+              closeAllInlineWidgets();
+              toast(`Swapped in "${esc(chosen.title)}"! Timing and transit distance recalculated.`, 'ok');
+              reRenderActivePlan();
+            }
+          });
+        });
+
+      } catch (err) {
+        resultsDiv.innerHTML = '<p style="text-align:center; color:var(--bad); font-size:0.85rem;">Failed to fetch alternatives. Check connection.</p>';
+      }
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    searchBtn.addEventListener('click', () => searchAlternatives(input.value.trim()));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        searchAlternatives(input.value.trim());
+      }
+    });
+
+    widget.querySelectorAll('.replace-chip').forEach(btn => {
+      btn.addEventListener('click', () => searchAlternatives(btn.dataset.pref));
+    });
+
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => input.focus(), 150);
+  }
+
+  // 3. Handle Remove Action with Recalculation
+  let _lastRemoved = null; // For undo
+  function handleRemove(actData, cardEl) {
+    const finalPlan = pickPlan(state.data);
+    let day = null;
+    if (finalPlan) {
+      const days = findDays(finalPlan);
+      day = days.find((d, dIdx) => (d.day ?? d.day_number ?? d.index ?? (dIdx + 1)) == actData.dayNum);
+    }
+    const dayRoute = finalPlan && finalPlan.route_map && Array.isArray(finalPlan.route_map.days)
+      ? finalPlan.route_map.days.find(d => d.day_number == actData.dayNum)
+      : null;
+
+    if (day && day.activities && day.activities[actData.idx]) {
+      _lastRemoved = {
+        dayNum: actData.dayNum,
+        idx: actData.idx,
+        actObj: day.activities[actData.idx],
+      };
+      day.activities.splice(actData.idx, 1);
+      recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
+    } else if (cardEl) {
+      cardEl.remove();
+    }
+
+    closeAllInlineWidgets();
+    toast(`Removed "${esc(actData.title)}" from Day ${actData.dayNum}. Transit and schedule recalculated. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
+    reRenderActivePlan();
+  }
+
   window.undoRemove = function() {
     if (!_lastRemoved) return;
     const finalPlan = pickPlan(state.data);
     if (!finalPlan) return;
     const days = findDays(finalPlan);
-    const day = days.find(d => (d.day ?? d.day_number ?? d.index) == _lastRemoved.dayNum);
+    const day = days.find((d, dIdx) => (d.day ?? d.day_number ?? d.index ?? (dIdx + 1)) == _lastRemoved.dayNum);
+    const dayRoute = finalPlan.route_map && Array.isArray(finalPlan.route_map.days)
+      ? finalPlan.route_map.days.find(d => d.day_number == _lastRemoved.dayNum)
+      : null;
+
     if (day && day.activities) {
       day.activities.splice(_lastRemoved.idx, 0, _lastRemoved.actObj);
+      recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
       _lastRemoved = null;
-      toast('Activity restored.', 'ok');
-      renderFinal(state.data);
+      toast('Activity restored. Schedule and transit updated.', 'ok');
+      reRenderActivePlan();
     }
   };
 
-  // Open Chat Drawer
-  function openChatDrawer(actData) {
-    const d = getDrawerEls();
-    if (!d.drawer || !d.overlay) return;
-    _drawerContext = { type: 'chat', data: actData, history: [] };
-    
-    if (d.img) d.img.src = actData.imgSrc;
-    if (d.title) d.title.textContent = actData.title;
-    const dest = (pickPlan(state.data).destination || (els.wsDestination && els.wsDestination.textContent) || '').split(',')[0].trim();
-    if (d.loc) d.loc.textContent = dest;
-    
-    if (d.chatFooter) d.chatFooter.hidden = false;
-    
-    // Initial UI state
-    if (d.body) {
-      d.body.innerHTML = `
-        <div class="vibe-badges">
-          <span class="vibe-badge">Local Insider</span>
-          <span class="vibe-badge">${esc(actData.category || 'Sightseeing')}</span>
-        </div>
-        <div class="chat-stream" id="chat-stream">
-          <div class="chat-bubble chat-ai">
-            Hi! I'm your local insider for <strong>${esc(actData.title)}</strong>. What would you like to know about the vibe, crowd, dress code, or tips?
-          </div>
-        </div>
-        <div class="chat-chips" id="chat-chips">
-          <button type="button" class="chat-chip" data-query="Is it good for a date night?">Is it good for a date night?</button>
-          <button type="button" class="chat-chip" data-query="What is the dress code?">What is the dress code?</button>
-          <button type="button" class="chat-chip" data-query="Are vegan or vegetarian options available?">Are vegan/veg options available?</button>
-          <button type="button" class="chat-chip" data-query="What's the best time to visit to avoid crowds?">Best time to visit?</button>
-        </div>
-      `;
-    }
-    
-    d.overlay.classList.add('open');
-    d.drawer.classList.add('open');
-    document.body.classList.add('modal-open');
-    if (d.chatInput) setTimeout(() => d.chatInput.focus(), 150);
-  }
-
-  // Handle sending chat messages
-  async function sendChatMessage(query) {
-    if (!query || !_drawerContext || _drawerContext.type !== 'chat') return;
-    
-    const d = getDrawerEls();
-    const stream = document.getElementById('chat-stream');
-    const chipsDiv = document.getElementById('chat-chips');
-    if (!stream) return;
-    
-    // Add user message
-    stream.innerHTML += `<div class="chat-bubble chat-user">${esc(query)}</div>`;
-    if (d.chatInput) d.chatInput.value = '';
-    if (chipsDiv) chipsDiv.innerHTML = ''; // Clear chips while loading
-    if (d.body) d.body.scrollTo({ top: d.body.scrollHeight, behavior: 'smooth' });
-    
-    // Add loading indicator
-    const loadingId = 'loading-' + Date.now();
-    stream.innerHTML += `<div class="chat-bubble chat-ai" id="${loadingId}"><i class="fa-solid fa-circle-notch fa-spin"></i> Getting the vibe...</div>`;
-    if (d.body) d.body.scrollTo({ top: d.body.scrollHeight, behavior: 'smooth' });
-    
-    const actData = _drawerContext.data;
-    const payload = {
-      place_name: actData.title,
-      destination: pickPlan(state.data).destination || (els.wsDestination && els.wsDestination.textContent) || '',
-      query: query,
-      description: actData.desc,
-      category: actData.category,
-      chat_history: _drawerContext.history
-    };
-    
-    _drawerContext.history.push({ role: 'user', content: query });
-    
-    try {
-      const res = await WayfarerAPI.chatPlace(payload);
-      
-      // Update vibe tags in header if provided
-      if (res.vibe_tags && res.vibe_tags.length && d.body) {
-        const badgesHtml = res.vibe_tags.map(t => `<span class="vibe-badge">${esc(t)}</span>`).join('');
-        const badgeContainer = d.body.querySelector('.vibe-badges');
-        if (badgeContainer) badgeContainer.innerHTML = badgesHtml;
-      }
-      
-      // Replace loading bubble with AI response
-      const loader = document.getElementById(loadingId);
-      if (loader) loader.outerHTML = `<div class="chat-bubble chat-ai">${esc(res.reply)}</div>`;
-      
-      _drawerContext.history.push({ role: 'assistant', content: res.reply });
-      
-      // Update quick chips
-      if (res.suggested_followups && res.suggested_followups.length && chipsDiv) {
-        chipsDiv.innerHTML = res.suggested_followups.map(q => `<button type="button" class="chat-chip" data-query="${esc(q)}">${esc(q)}</button>`).join('');
-      }
-      
-      if (d.body) d.body.scrollTo({ top: d.body.scrollHeight, behavior: 'smooth' });
-    } catch (err) {
-      console.error("Chat error", err);
-      const loader = document.getElementById(loadingId);
-      if (loader) loader.outerHTML = `<div class="chat-bubble chat-ai" style="color:var(--bad);">Failed to fetch vibe. Please try again.</div>`;
-    }
-  }
-
-  // Bind chat events
+  // Delegate clicks for hover actions (chat, replace, remove)
   document.addEventListener('click', (e) => {
-    if (e.target.closest('#chat-send-btn')) {
-      const d = getDrawerEls();
-      if (d.chatInput) sendChatMessage(d.chatInput.value.trim());
-    } else if (e.target.classList.contains('chat-chip')) {
-      sendChatMessage(e.target.dataset.query);
+    const btn = e.target.closest('.action-btn');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const action = btn.dataset.action;
+    const dayNum = parseInt(btn.dataset.day, 10);
+    const idx = parseInt(btn.dataset.idx, 10);
+    const cardEl = btn.closest('.activity');
+
+    const actData = getActivityData(dayNum, idx, cardEl);
+    if (!actData) return;
+
+    if (action === 'remove') {
+      handleRemove(actData, cardEl);
+    } else if (action === 'replace') {
+      openInlineCardReplace(actData, cardEl);
+    } else if (action === 'chat') {
+      openInlineCardChat(actData, cardEl);
     }
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.target && e.target.id === 'chat-input-box' && e.key === 'Enter') {
-      e.preventDefault();
-      sendChatMessage(e.target.value.trim());
-    }
-  });
-
-  // Open Replace Drawer
-  function openReplaceDrawer(actData) {
-    const d = getDrawerEls();
-    if (!d.drawer || !d.overlay) return;
-    _drawerContext = { type: 'replace', data: actData };
-    
-    if (d.img) d.img.src = actData.imgSrc;
-    if (d.title) d.title.textContent = `Replacing: ${actData.title}`;
-    if (d.loc) d.loc.textContent = `Day ${actData.dayNum} · ${actData.time}`;
-    
-    if (d.chatFooter) d.chatFooter.hidden = true;
-    
-    if (d.body) {
-      d.body.innerHTML = `
-        <div class="replace-search-box">
-          <button type="button" class="replace-preprompt" id="btn-preprompt">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> Suggest me some alternatives
-          </button>
-          <div class="replace-or">or</div>
-          <div class="chat-input-area" style="padding:0; border:none; border-radius:999px;">
-            <input type="text" id="replace-input" placeholder="e.g. cozy riverside cafe..." autocomplete="off" />
-            <button type="button" class="chat-send-btn" id="replace-search-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
-          </div>
-        </div>
-        <div id="replace-results" style="display:flex; flex-direction:column; gap:16px;"></div>
-      `;
-    }
-    
-    d.overlay.classList.add('open');
-    d.drawer.classList.add('open');
-    document.body.classList.add('modal-open');
-    
-    const preBtn = document.getElementById('btn-preprompt');
-    if (preBtn) preBtn.addEventListener('click', () => doReplaceSearch(''));
-    const searchBtn = document.getElementById('replace-search-btn');
-    const replaceInput = document.getElementById('replace-input');
-    if (searchBtn && replaceInput) {
-      searchBtn.addEventListener('click', () => {
-        const val = replaceInput.value.trim();
-        if (val) doReplaceSearch(val);
-      });
-      replaceInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          const val = e.target.value.trim();
-          if (val) doReplaceSearch(val);
-        }
-      });
-      setTimeout(() => replaceInput.focus(), 150);
-    }
-  }
-
-  async function doReplaceSearch(pref) {
-    const resDiv = document.getElementById('replace-results');
-    if (!resDiv || !_drawerContext) return;
-    resDiv.innerHTML = `<div style="text-align:center; padding: 40px; color: var(--brand-ink);"><i class="fa-solid fa-circle-notch fa-spin fa-2x"></i><p style="margin-top:10px;font-weight:600;">Finding unique alternatives...</p></div>`;
-    
-    const actData = _drawerContext.data;
-    const payload = {
-      current_place: actData.title,
-      destination: pickPlan(state.data).destination || '',
-      time_slot: actData.time || 'Daytime',
-      day_number: actData.dayNum,
-      user_preference: pref,
-      existing_places: getExistingPlaces()
-    };
-    
-    try {
-      const res = await WayfarerAPI.replacePlace(payload);
-      
-      if (!res.alternatives || !res.alternatives.length) {
-        resDiv.innerHTML = `<p style="text-align:center; color:var(--bad);">No alternatives found. Try a different request.</p>`;
-        return;
-      }
-      
-      window._replaceAlts = res.alternatives;
-      
-      let html = '';
-      res.alternatives.forEach((alt, i) => {
-        html += `
-          <div class="alt-card">
-            <div class="alt-header">
-              <div>
-                <h4 class="alt-title">${esc(alt.title)}</h4>
-                <div class="alt-loc">${esc(alt.location_name)}</div>
-              </div>
-              <div class="alt-cost">${money(alt.estimated_cost)}</div>
-            </div>
-            <p class="alt-desc">${esc(alt.description)}</p>
-            <button type="button" class="btn-swap" data-alt-idx="${i}">Swap This In</button>
-          </div>
-        `;
-      });
-      resDiv.innerHTML = html;
-      
-    } catch (err) {
-      console.error(err);
-      resDiv.innerHTML = `<p style="text-align:center; color:var(--bad);">Failed to fetch alternatives. Ensure API is running.</p>`;
-    }
-  }
-
-  // Handle Swap Click
-  document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('btn-swap')) {
-      const idx = parseInt(e.target.dataset.altIdx, 10);
-      const alt = window._replaceAlts && window._replaceAlts[idx];
-      if (!alt || !_drawerContext || _drawerContext.type !== 'replace') return;
-      
-      const actData = _drawerContext.data;
-      const finalPlan = pickPlan(state.data);
-      if (!finalPlan) return;
-      const days = findDays(finalPlan);
-      const day = days.find(d => (d.day ?? d.day_number ?? d.index) == actData.dayNum);
-      if (!day || !day.activities) return;
-      
-      // Perform the swap
-      const newAct = {
-        title: alt.title,
-        location_name: alt.location_name,
-        time: alt.time || actData.time,
-        description: alt.description,
-        cost: alt.estimated_cost,
-        category: alt.category
-      };
-      day.activities[actData.idx] = newAct;
-      
-      closeDrawer();
-      toast(`Swapped in ${esc(alt.title)}!`, 'ok');
-      renderFinal(state.data); // Re-render modified plan locally
+    if (e.key === 'Escape') {
+      closeAllInlineWidgets();
+      document.body.classList.remove('modal-open');
+      const am = document.getElementById('auth-modal');
+      if (am) am.hidden = true;
+      const sm = document.getElementById('share-modal');
+      if (sm) sm.hidden = true;
     }
   });
 

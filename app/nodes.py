@@ -472,6 +472,12 @@ async def human_gate(state: TripState) -> dict[str, Any]:
 
     update: dict[str, Any] = {"review": decision}
     if action == "approve":
+        custom_days = decision.get("customized_days")
+        if isinstance(custom_days, list) and custom_days:
+            current_draft = dict(state.get("draft_itinerary") or {})
+            current_draft["days"] = custom_days
+            update["draft_itinerary"] = current_draft
+
         selections = decision.get("travel_selections")
         if isinstance(selections, dict):
             update["travel_selections"] = {
