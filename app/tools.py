@@ -746,6 +746,9 @@ async def _ors_leg(
             return None
 
 
+_ROUTE_LEG_CACHE: dict[str, dict[str, Any]] = {}
+
+
 async def _osrm_leg(
     origin: dict[str, Any], dest: dict[str, Any], profile: str
 ) -> dict[str, Any]:
@@ -753,7 +756,7 @@ async def _osrm_leg(
     coords = f"{origin['lon']},{origin['lat']};{dest['lon']},{dest['lat']}"
     crow_km = _haversine_km(origin["lat"], origin["lon"], dest["lat"], dest["lon"])
 
-    async with httpx.AsyncClient(timeout=20) as http:
+    async with httpx.AsyncClient(timeout=4.0) as http:
         try:
             res = await http.get(
                 f"{_OSRM_URL}/{profile}/{coords}",
@@ -776,7 +779,7 @@ async def _osrm_leg(
                 "geometry": geometry,
                 "source": "osrm",
             }
-        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+        except Exception:
             speed_kmh = 4.5 if profile == "foot" else 35.0
             duration_min = max(1, round((crow_km / speed_kmh) * 60))
             return {
@@ -796,7 +799,11 @@ async def _osrm_leg(
 async def _route_leg(
     origin: dict[str, Any], dest: dict[str, Any], profile: str
 ) -> dict[str, Any]:
-    """Route a leg — CARTO TomTom MCP first (Primary), then OpenRouteService, then OSRM, then straight-line estimate."""
+    """Route a leg with caching — CARTO TomTom MCP first, then ORS, then OSRM, then straight-line."""
+    cache_key = f"{origin.get('lat', 0):.4f}_{origin.get('lon', 0):.4f}_{dest.get('lat', 0):.4f}_{dest.get('lon', 0):.4f}_{profile}"
+    if cache_key in _ROUTE_LEG_CACHE:
+        return _ROUTE_LEG_CACHE[cache_key]
+
     from app.services.carto_mcp import get_carto_mcp_client
     carto = get_carto_mcp_client()
     if carto.is_configured:
@@ -806,14 +813,18 @@ async def _route_leg(
             mode = "pedestrian" if profile == "foot" else "car"
             carto_leg = await carto.route(p1, p2, mode=mode)
             if carto_leg:
+                _ROUTE_LEG_CACHE[cache_key] = carto_leg
                 return carto_leg
         except Exception:
             pass
 
     leg = await _ors_leg(origin, dest, profile)
     if leg:
+        _ROUTE_LEG_CACHE[cache_key] = leg
         return leg
-    return await _osrm_leg(origin, dest, profile)
+    osrm_leg = await _osrm_leg(origin, dest, profile)
+    _ROUTE_LEG_CACHE[cache_key] = osrm_leg
+    return osrm_leg
 
 
 def _clean_geocode_label(text: str) -> str:

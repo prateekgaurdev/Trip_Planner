@@ -78,6 +78,8 @@ class GeminiClient:
             model=settings.gemini_model,
             google_api_key=settings.google_api_key,
             temperature=0.4,
+            max_retries=2,
+            timeout=45.0,
         )
 
     async def complete_json(

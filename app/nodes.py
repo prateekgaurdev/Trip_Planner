@@ -96,7 +96,6 @@ async def research_fetch(state: TripState) -> dict[str, Any]:
         web_search(dest_query),
         get_weather(dest, prefs["start_date"], prefs["end_date"]),
         get_exchange_rate(prefs["currency"]),
-        fetch_travel_options(prefs),
         mcp_client.fetch_safety_and_etiquette(dest),
     ]
 
@@ -108,17 +107,16 @@ async def research_fetch(state: TripState) -> dict[str, Any]:
     findings = fetch_results[0]
     weather = fetch_results[1]
     exchange_rates = fetch_results[2]
-    travel_options = fetch_results[3]
-    travel_advisories = fetch_results[4]
-    corridor_findings = fetch_results[5] if origin and len(fetch_results) > 5 else []
+    travel_advisories = fetch_results[3]
+    corridor_findings = fetch_results[4] if origin and len(fetch_results) > 4 else []
 
     mcp_flow("Ingested destination advisories via MCP", destination=dest, emergency=bool(travel_advisories.get("emergency_numbers")))
 
-    # Ingest web findings and retrieve grounded domain knowledge via RAG
+    # Ingest web findings and retrieve grounded domain knowledge via RAG asynchronously (offload CPU MiniLM embeddings)
     rag = get_rag_engine()
-    rag.ingest_live_search(dest, findings)
+    await asyncio.to_thread(rag.ingest_live_search, dest, findings)
     if corridor_findings:
-        rag.ingest_live_search(f"{origin} to {dest}", corridor_findings)
+        await asyncio.to_thread(rag.ingest_live_search, f"{origin} to {dest}", corridor_findings)
 
     rag_search_query = f"{dest_query} {custom_notes}".strip()
     rag_chunks = rag.retrieve(dest, rag_search_query, interests=prefs.get("interests"), top_k=5)
@@ -131,9 +129,9 @@ async def research_fetch(state: TripState) -> dict[str, Any]:
     return {
         "status": "researching",
         "progress_message": progress,
-        "travel_options": travel_options,
+        "travel_options": None,
         "travel_advisories": travel_advisories,
-        "_travel_options": travel_options,
+        "_travel_options": None,
         "_travel_advisories": travel_advisories,
         "_corridor_raw": corridor_intel,
         "_research_raw": {

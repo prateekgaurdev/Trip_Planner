@@ -548,8 +548,11 @@ async def fetch_travel_options(preferences: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+_RESTAURANT_CACHE: dict[str, dict[str, str] | None] = {}
+
+
 async def search_nearby_restaurants(location_name: str, destination: str, meal: str = "Lunch") -> dict[str, str] | None:
-    """Finds the top restaurant near a specific location using SerpAPI google_local."""
+    """Finds the top restaurant near a specific location using SerpAPI google_local with caching."""
     from app.config import stubs_enabled
     from app.pipeline_log import api_end, api_start
     if stubs_enabled():
@@ -560,23 +563,34 @@ async def search_nearby_restaurants(location_name: str, destination: str, meal: 
             "time": "13:00" if meal.lower() == "lunch" else "19:00"
         }
 
+    cache_key = f"{location_name.strip().lower()}_{destination.strip().lower()}_{meal.lower()}"
+    if cache_key in _RESTAURANT_CACHE:
+        return _RESTAURANT_CACHE[cache_key]
+
     q = f"best restaurants near {location_name}, {destination}"
     t0 = api_start("SerpAPI", "local", q=q[:40])
     
-    data = await _serp_get({
-        "engine": "google_local",
-        "q": q,
-        "hl": "en",
-        "gl": "us",
-    })
+    try:
+        data = await asyncio.wait_for(_serp_get({
+            "engine": "google_local",
+            "q": q,
+            "hl": "en",
+            "gl": "us",
+        }), timeout=3.5)
+    except Exception:
+        api_end("SerpAPI", "local", t0, ok=False, reason="timeout")
+        _RESTAURANT_CACHE[cache_key] = None
+        return None
 
     if not data or not data.get("local_results"):
         api_end("SerpAPI", "local", t0, ok=False, reason="no results")
+        _RESTAURANT_CACHE[cache_key] = None
         return None
 
     results = data.get("local_results", [])
     if not results:
         api_end("SerpAPI", "local", t0, ok=False, reason="empty local_results")
+        _RESTAURANT_CACHE[cache_key] = None
         return None
 
     top = results[0]
@@ -588,9 +602,11 @@ async def search_nearby_restaurants(location_name: str, destination: str, meal: 
         desc += f" · {rating} ({reviews} reviews)"
 
     api_end("SerpAPI", "local", t0, found=top.get("title"))
-    return {
+    res_obj = {
         "title": f"{meal} at {top.get('title', 'Local Restaurant')}",
         "description": desc,
         "location_name": top.get("title", f"Restaurant near {location_name}"),
         "time": "13:00" if meal.lower() == "lunch" else "19:00"
     }
+    _RESTAURANT_CACHE[cache_key] = res_obj
+    return res_obj
