@@ -6,10 +6,6 @@ trip preferences; it researches the destination, drafts a day-by-day
 itinerary with a budget breakdown, then **pauses for your approval** before
 finalizing — and lets you *approve*, *reject*, or *modify* the draft.
 
-> Built for the Express Analytics AI/ML Engineer take-home. Scope is kept
-> deliberately tight — a clean 5-node graph that works flawlessly — per the
-> brief's stated value of *clear thinking over feature completeness*.
-
 ---
 
 ## Architecture

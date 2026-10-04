@@ -7,6 +7,7 @@ venv/
 env/
 
 # Env & secrets
+impressive_qualities.md
 .env
 
 # LangGraph checkpoint store
