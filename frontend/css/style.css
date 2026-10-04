@@ -2636,6 +2636,264 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; background: #eef2
 .action-btn.btn-replace:hover { background: #f0fdfa; color: #0f766e; }
 .action-btn.btn-remove:hover { background: #fff1f2; color: #e11d48; }
 
+/* Suppress floating action bubble completely when the inline chatbot is active */
+.activity.has-inline-chat-open .activity-hover-actions,
+.activity.has-inline-chat-open:hover .activity-hover-actions {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+/* ─── Top Itinerary Header Undo Action Button ───────────────── */
+.itinerary-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.btn-undo-header {
+  background: #ffffff;
+  border: 1.5px solid var(--line);
+  color: var(--ink);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+}
+.btn-undo-header:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: #f0fdfa;
+  transform: translateY(-1px);
+}
+.btn-undo-header:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #f8fafc;
+  color: var(--muted);
+  box-shadow: none;
+}
+.btn-undo-header i {
+  color: var(--brand);
+}
+.btn-undo-header:disabled i {
+  color: var(--muted);
+}
+
+/* ─── Movable Drag & Drop Cards ────────────────────────────── */
+.activity.is-draggable {
+  cursor: grab;
+}
+.activity.is-dragging {
+  opacity: 0.4 !important;
+  border: 2px dashed var(--brand) !important;
+  background: #f0fdfa !important;
+  cursor: grabbing !important;
+  transform: scale(0.99);
+}
+.activity.drag-over-above {
+  border-top: 3.5px solid var(--brand) !important;
+}
+.activity.drag-over-below {
+  border-bottom: 3.5px solid var(--brand) !important;
+}
+.a-drag-handle {
+  width: 22px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  cursor: grab;
+  margin-right: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  user-select: none;
+  font-size: 0.88rem;
+}
+.activity:hover .a-drag-handle {
+  opacity: 1;
+}
+.a-drag-handle:hover {
+  color: var(--brand);
+}
+
+/* ─── Middle Hover Line & Add Event Inserter ───────────────── */
+.event-insert-zone {
+  position: relative;
+  height: 28px;
+  margin: -14px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 15;
+  transition: all 0.2s ease;
+}
+.event-insert-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+.event-insert-zone:hover .event-insert-line {
+  background: rgba(13, 148, 136, 0.45);
+}
+.btn-insert-event {
+  position: relative;
+  z-index: 2;
+  background: #ffffff;
+  border: 1.5px solid rgba(13, 148, 136, 0.4);
+  color: var(--brand);
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  opacity: 0;
+  transform: scale(0.9);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+.event-insert-zone:hover .btn-insert-event {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+  border-color: var(--brand);
+  background: #f0fdfa;
+}
+.btn-insert-event:hover {
+  background: var(--brand);
+  color: #ffffff;
+  box-shadow: 0 6px 18px rgba(13, 148, 136, 0.25);
+  transform: scale(1.05);
+}
+
+/* Inline Add Event Creator Box */
+.event-insert-creator {
+  background: #ffffff;
+  border: 2px solid var(--brand);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin: 12px 0;
+  box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: dropdownFadeIn 0.2s ease;
+}
+.creator-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+.creator-head h5 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.creator-close {
+  background: #f1f5f9;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--ink-soft);
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+}
+.creator-close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.creator-inputs-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.creator-inputs-row input,
+.creator-inputs-row select {
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  outline: none;
+  font-family: inherit;
+}
+.creator-inputs-row input:focus,
+.creator-inputs-row select:focus {
+  border-color: var(--brand);
+}
+.creator-title-input {
+  flex: 1;
+  min-width: 180px;
+}
+.creator-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.creator-quick-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.creator-chip {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.creator-chip:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: #f0fdfa;
+}
+.btn-save-event {
+  background: var(--brand);
+  color: #ffffff;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.btn-save-event:hover {
+  background: var(--brand-2);
+  transform: translateY(-1px);
+}
+
 /* ─── Inline Activity Card Chatbot & Expansion (Right Side) ─── */
 .activity.has-inline-chat-open {
   background: #ffffff !important;

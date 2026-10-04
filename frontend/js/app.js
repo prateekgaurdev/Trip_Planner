@@ -15,6 +15,7 @@
   // ─── State ──────────────────────────────────────────────
   const SESSION_KEY = 'wayfarer_session';
   const _imageStore = new Map();
+  const _undoHistory = [];
   const state = {
     planId: null,
     status: null,
@@ -1281,7 +1282,7 @@ ${custom_notes}`.trim();
       window.WayfarerMaps.bindRouteSection(mapData);
     }
     bindTravelTabs();
-    bindItineraryDayFilter();
+    bindItineraryInteractions();
     hydrateActivityImages(dest);
   }
   function renderFinal(data) {
@@ -1298,7 +1299,7 @@ ${custom_notes}`.trim();
       window.WayfarerMaps.bindRouteSection(plan.route_map);
     }
     bindTravelTabs();
-    bindItineraryDayFilter();
+    bindItineraryInteractions();
     hydrateActivityImages(dest);
     els.itinerary.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1385,20 +1386,32 @@ ${custom_notes}`.trim();
     // Days / itinerary
     const days = findDays(plan);
     if (days.length) {
-      if (days.length > 1) {
-        mainParts.push(`
-          <div class="itinerary-days-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin:26px 0 16px;">
+      const canUndo = _undoHistory.length > 0;
+      const lastUndoItem = canUndo ? _undoHistory[_undoHistory.length - 1] : null;
+      const undoText = lastUndoItem ? lastUndoItem.label : 'Undo';
+      const undoBtnHtml = !isFinal ? `
+        <button type="button" class="btn-undo-header" id="top-itin-undo-btn" ${canUndo ? '' : 'disabled'} title="${canUndo ? 'Click to undo last change' : 'No changes to undo'}">
+          <i class="fa-solid fa-arrow-rotate-left"></i>
+          <span class="undo-label">${esc(undoText)}</span>
+        </button>
+      ` : '';
+
+      mainParts.push(`
+        <div class="itinerary-days-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin:26px 0 16px;">
+          <div class="itinerary-header-left">
             <h3 style="margin:0; font-size:1.2rem; display:flex; align-items:center; gap:8px;">
               <i class="fa-solid fa-calendar-days" style="color:var(--brand);"></i> Day-by-Day Itinerary
             </h3>
-            <div class="itinerary-day-filter-pills" id="itinerary-day-tabs" style="display:flex; gap:6px; flex-wrap:wrap;">
-              <button class="itin-pill-btn active" data-itin-day="1" style="border:1.5px solid var(--brand); background:var(--brand); color:#fff; border-radius:999px; padding:6px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;">Day 1</button>
-              ${days.slice(1).map((d, idx) => `<button class="itin-pill-btn" data-itin-day="${d.day_number || (idx + 2)}" style="border:1.5px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:999px; padding:6px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;">Day ${d.day_number || (idx + 2)}</button>`).join('')}
-              <button class="itin-pill-btn" data-itin-day="all" style="border:1.5px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:999px; padding:6px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;"><i class="fa-solid fa-layer-group"></i> All Days</button>
-            </div>
+            ${undoBtnHtml}
           </div>
-        `);
-      }
+          ${days.length > 1 ? `
+          <div class="itinerary-day-filter-pills" id="itinerary-day-tabs" style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="itin-pill-btn active" data-itin-day="1" style="border:1.5px solid var(--brand); background:var(--brand); color:#fff; border-radius:999px; padding:6px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;">Day 1</button>
+            ${days.slice(1).map((d, idx) => `<button class="itin-pill-btn" data-itin-day="${d.day_number || (idx + 2)}" style="border:1.5px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:999px; padding:6px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;">Day ${d.day_number || (idx + 2)}</button>`).join('')}
+            <button class="itin-pill-btn" data-itin-day="all" style="border:1.5px solid var(--line); background:#fff; color:var(--ink-soft); border-radius:999px; padding:6px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;"><i class="fa-solid fa-layer-group"></i> All Days</button>
+          </div>` : ''}
+        </div>
+      `);
       mainParts.push('<div id="itinerary-days-container">');
       days.forEach((d, i) => {
         const num = d.day ?? d.day_number ?? d.index ?? (i + 1);
@@ -1713,55 +1726,307 @@ ${custom_notes}`.trim();
     return cleaned.trim() || text.split(/\s+/).slice(0, 3).join(' ');
   }
 
-  function bindItineraryDayFilter() {
+  function performUndo() {
+    if (!_undoHistory.length) return;
+    const action = _undoHistory.pop();
+    const finalPlan = pickPlan(state.data);
+    if (!finalPlan) return;
+    const days = findDays(finalPlan);
+    const day = days.find((d, dIdx) => (d.day ?? d.day_number ?? d.index ?? (dIdx + 1)) == action.dayNum);
+    const dayRoute = finalPlan.route_map && Array.isArray(finalPlan.route_map.days)
+      ? finalPlan.route_map.days.find(d => d.day_number == action.dayNum)
+      : null;
+
+    if (!day || !day.activities) return;
+
+    if (action.type === 'remove') {
+      day.activities.splice(action.idx, 0, action.actObj);
+    } else if (action.type === 'replace') {
+      day.activities[action.idx] = action.oldAct;
+    } else if (action.type === 'reorder') {
+      const [moved] = day.activities.splice(action.toIdx, 1);
+      day.activities.splice(action.fromIdx, 0, moved);
+    } else if (action.type === 'add') {
+      day.activities.splice(action.idx, 1);
+    }
+
+    recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
+    toast(`${action.label.replace('Undo: ', 'Restored: ')}`, 'ok');
+    reRenderActivePlan();
+  }
+  window.undoRemove = performUndo;
+
+  function bindItineraryInteractions() {
+    // 1. Day tabs
     const tabsContainer = document.getElementById('itinerary-day-tabs');
-    if (!tabsContainer) return;
-    tabsContainer.querySelectorAll('.itin-pill-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        tabsContainer.querySelectorAll('.itin-pill-btn').forEach((b) => {
-          b.classList.remove('active');
-          b.style.background = '#fff';
-          b.style.color = 'var(--ink-soft)';
-          b.style.borderColor = 'var(--line)';
-        });
-        btn.classList.add('active');
-        btn.style.background = 'var(--brand)';
-        btn.style.color = '#fff';
-        btn.style.borderColor = 'var(--brand)';
+    if (tabsContainer) {
+      tabsContainer.querySelectorAll('.itin-pill-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          tabsContainer.querySelectorAll('.itin-pill-btn').forEach((b) => {
+            b.classList.remove('active');
+            b.style.background = '#fff';
+            b.style.color = 'var(--ink-soft)';
+            b.style.borderColor = 'var(--line)';
+          });
+          btn.classList.add('active');
+          btn.style.background = 'var(--brand)';
+          btn.style.color = '#fff';
+          btn.style.borderColor = 'var(--brand)';
 
-        const dayVal = btn.dataset.itinDay;
-        const allDays = dayVal === 'all';
-        const targetDay = parseInt(dayVal, 10);
+          const dayVal = btn.dataset.itinDay;
+          const allDays = dayVal === 'all';
+          const targetDay = parseInt(dayVal, 10);
 
-        document.querySelectorAll('#itinerary-days-container .day-card').forEach((card) => {
-          const cardDay = parseInt(card.dataset.dayNum, 10);
-          if (allDays || cardDay === targetDay) {
-            card.style.display = 'block';
-          } else {
-            card.style.display = 'none';
+          document.querySelectorAll('#itinerary-days-container .day-card').forEach((card) => {
+            const cardDay = parseInt(card.dataset.dayNum, 10);
+            if (allDays || cardDay === targetDay) {
+              card.style.display = 'block';
+            } else {
+              card.style.display = 'none';
+            }
+          });
+
+          // Also synchronize with the Map day filter!
+          const mapDayBtn = document.querySelector(`.day-pill-btn[data-day="${dayVal}"]`);
+          if (mapDayBtn && !mapDayBtn.classList.contains('active')) {
+            mapDayBtn.click();
           }
         });
+      });
 
-        // Also synchronize with the Map day filter!
-        const mapDayBtn = document.querySelector(`.day-pill-btn[data-day="${dayVal}"]`);
-        if (mapDayBtn && !mapDayBtn.classList.contains('active')) {
-          mapDayBtn.click();
+      // Default to Day 1 filter!
+      const defaultDay1Btn = tabsContainer.querySelector('.itin-pill-btn[data-itin-day="1"]');
+      if (defaultDay1Btn && !tabsContainer.querySelector('.itin-pill-btn.active')) {
+        defaultDay1Btn.click();
+      }
+    }
+
+    // 2. Top Header Undo Button
+    const topUndoBtn = document.getElementById('top-itin-undo-btn');
+    if (topUndoBtn) {
+      topUndoBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        performUndo();
+      });
+    }
+
+    // 3. Drag and Drop Movable Cards
+    bindActivityDragAndDrop();
+
+    // 4. Middle Line Hover Inserter
+    bindEventInserters();
+  }
+
+  let _draggedCard = null;
+  let _dragSource = null;
+
+  function bindActivityDragAndDrop() {
+    const cards = document.querySelectorAll('.activity.is-draggable');
+    cards.forEach((card) => {
+      card.addEventListener('dragstart', (e) => {
+        _draggedCard = card;
+        _dragSource = {
+          dayNum: parseInt(card.dataset.day, 10),
+          idx: parseInt(card.dataset.idx, 10),
+        };
+        card.classList.add('is-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify(_dragSource));
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('is-dragging');
+        document.querySelectorAll('.activity').forEach((c) => {
+          c.classList.remove('drag-over-above', 'drag-over-below');
+        });
+        _draggedCard = null;
+        _dragSource = null;
+      });
+
+      card.addEventListener('dragover', (e) => {
+        if (!_draggedCard || _draggedCard === card) return;
+        const targetDay = parseInt(card.dataset.day, 10);
+        if (_dragSource && _dragSource.dayNum !== targetDay) return;
+
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+
+        const rect = card.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          card.classList.add('drag-over-above');
+          card.classList.remove('drag-over-below');
+        } else {
+          card.classList.add('drag-over-below');
+          card.classList.remove('drag-over-above');
+        }
+      });
+
+      card.addEventListener('dragleave', () => {
+        card.classList.remove('drag-over-above', 'drag-over-below');
+      });
+
+      card.addEventListener('drop', (e) => {
+        if (!_draggedCard || _draggedCard === card) return;
+        e.preventDefault();
+        const targetDay = parseInt(card.dataset.day, 10);
+        let targetIdx = parseInt(card.dataset.idx, 10);
+        if (_dragSource && _dragSource.dayNum !== targetDay) return;
+
+        const isBelow = card.classList.contains('drag-over-below');
+        card.classList.remove('drag-over-above', 'drag-over-below');
+
+        const fromIdx = _dragSource.idx;
+        let toIdx = isBelow ? targetIdx + 1 : targetIdx;
+        if (fromIdx < toIdx) toIdx -= 1;
+        if (fromIdx === toIdx) return;
+
+        const finalPlan = pickPlan(state.data);
+        const days = findDays(finalPlan);
+        const day = days.find((d, dIdx) => (d.day ?? d.day_number ?? d.index ?? (dIdx + 1)) == targetDay);
+        const dayRoute = finalPlan.route_map && Array.isArray(finalPlan.route_map.days)
+          ? finalPlan.route_map.days.find(d => d.day_number == targetDay)
+          : null;
+
+        if (day && day.activities) {
+          const [movedItem] = day.activities.splice(fromIdx, 1);
+          day.activities.splice(toIdx, 0, movedItem);
+
+          recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
+
+          const title = movedItem.title || 'Activity';
+          _undoHistory.push({
+            type: 'reorder',
+            label: `Undo: Move "${title}"`,
+            dayNum: targetDay,
+            fromIdx: fromIdx,
+            toIdx: toIdx,
+          });
+
+          toast(`Moved "${esc(title)}"! Timing & transit distances recalculated.`, 'ok');
+          reRenderActivePlan();
         }
       });
     });
+  }
 
-    // Default to Day 1 filter!
-    const defaultDay1Btn = tabsContainer.querySelector('.itin-pill-btn[data-itin-day="1"]');
-    if (defaultDay1Btn) {
-      document.querySelectorAll('#itinerary-days-container .day-card').forEach((card) => {
-        const cardDay = parseInt(card.dataset.dayNum, 10);
-        if (cardDay === 1) {
-          card.style.display = 'block';
-        } else {
-          card.style.display = 'none';
+  function bindEventInserters() {
+    document.querySelectorAll('.btn-insert-event').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const dayNum = parseInt(btn.dataset.day, 10);
+        const afterIdx = parseInt(btn.dataset.afterIdx, 10);
+        const wrap = document.getElementById(`insert-creator-wrap-${dayNum}-${afterIdx}`);
+        if (!wrap) return;
+
+        if (wrap.style.display === 'block') {
+          wrap.style.display = 'none';
+          wrap.innerHTML = '';
+          return;
         }
+
+        wrap.style.display = 'block';
+        wrap.innerHTML = `
+          <div class="event-insert-creator">
+            <div class="creator-head">
+              <h5><i class="fa-solid fa-sparkles"></i> Add Activity Between Stops</h5>
+              <button type="button" class="creator-close" title="Cancel"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="creator-inputs-row">
+              <input type="text" class="creator-title-input" placeholder="e.g. Scenic Viewpoint or Cozy Bakery..." autocomplete="off" />
+              <select class="creator-cat-select">
+                <option value="sightseeing" selected>Sightseeing</option>
+                <option value="dining">Dining / Food</option>
+                <option value="culture">Culture / Heritage</option>
+                <option value="nature">Nature / Views</option>
+                <option value="relaxation">Relaxation / Tea</option>
+              </select>
+              <button type="button" class="btn-save-event"><i class="fa-solid fa-plus"></i> Add to Route</button>
+            </div>
+            <div class="creator-actions">
+              <div class="creator-quick-chips">
+                <span style="font-size:0.75rem; color:var(--muted); font-weight:700;">Quick Presets:</span>
+                <button type="button" class="creator-chip" data-preset="Cozy Tea &amp; Bakery Break" data-cat="dining">☕ Bakery Break</button>
+                <button type="button" class="creator-chip" data-preset="Panoramic Sunset Viewpoint" data-cat="nature">🌅 Viewpoint</button>
+                <button type="button" class="creator-chip" data-preset="Traditional Artisan Market Walk" data-cat="culture">🛍️ Artisan Bazaar</button>
+                <button type="button" class="creator-chip" data-preset="Peaceful Riverside Meditation" data-cat="relaxation">🧘 River Peace</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const titleInput = wrap.querySelector('.creator-title-input');
+        const catSelect = wrap.querySelector('.creator-cat-select');
+        const saveBtn = wrap.querySelector('.btn-save-event');
+        const closeBtn = wrap.querySelector('.creator-close');
+
+        closeBtn.addEventListener('click', () => {
+          wrap.style.display = 'none';
+          wrap.innerHTML = '';
+        });
+
+        wrap.querySelectorAll('.creator-chip').forEach(chip => {
+          chip.addEventListener('click', () => {
+            titleInput.value = chip.dataset.preset;
+            catSelect.value = chip.dataset.cat;
+            titleInput.focus();
+          });
+        });
+
+        function saveNewEvent() {
+          const newTitle = titleInput.value.trim();
+          if (!newTitle) {
+            toast('Please enter a place or activity name.', 'warn');
+            return;
+          }
+          const cat = catSelect.value || 'sightseeing';
+
+          const finalPlan = pickPlan(state.data);
+          const days = findDays(finalPlan);
+          const day = days.find((d, dIdx) => (d.day ?? d.day_number ?? d.index ?? (dIdx + 1)) == dayNum);
+          const dayRoute = finalPlan.route_map && Array.isArray(finalPlan.route_map.days)
+            ? finalPlan.route_map.days.find(d => d.day_number == dayNum)
+            : null;
+
+          if (day && day.activities) {
+            const insertIdx = afterIdx + 1;
+            const newAct = {
+              title: newTitle,
+              location_name: newTitle,
+              description: `Added custom stop: ${newTitle}`,
+              category: cat,
+              time: '12:00 PM',
+            };
+
+            day.activities.splice(insertIdx, 0, newAct);
+            recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
+
+            _undoHistory.push({
+              type: 'add',
+              label: `Undo: Add "${newTitle}"`,
+              dayNum: dayNum,
+              idx: insertIdx,
+            });
+
+            wrap.style.display = 'none';
+            wrap.innerHTML = '';
+            toast(`Added "${esc(newTitle)}"! Timing & transit distances recalculated.`, 'ok');
+            reRenderActivePlan();
+          }
+        }
+
+        saveBtn.addEventListener('click', saveNewEvent);
+        titleInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            saveNewEvent();
+          }
+        });
+
+        setTimeout(() => titleInput.focus(), 150);
       });
-    }
+    });
   }
 
   function renderDay(day, i, destination, isDraft, dayRoute) {
@@ -1774,7 +2039,19 @@ ${custom_notes}`.trim();
     const wIcon = (weather && typeof weather === 'object' && weather.icon) ? weather.icon : 'cloud-sun';
     const weatherHTML = weather ? `<span class="day-weather"><i class="fa-solid fa-${wIcon}"></i> ${esc(weatherText(weather))}</span>` : '';
     const actsHTML = Array.isArray(acts) && acts.length
-      ? acts.map((a, actIdx) => renderActivity(a, destination, isDraft, num, actIdx)).join('')
+      ? acts.map((a, actIdx) => {
+          const actCard = renderActivity(a, destination, isDraft, num, actIdx);
+          const divider = isDraft && actIdx < acts.length - 1 ? `
+            <div class="event-insert-zone" data-day="${num}" data-after-idx="${actIdx}">
+              <div class="event-insert-line"></div>
+              <button type="button" class="btn-insert-event" data-day="${num}" data-after-idx="${actIdx}" title="Add activity between stops">
+                <i class="fa-solid fa-plus"></i> <span>Add Event</span>
+              </button>
+            </div>
+            <div class="event-insert-creator-container" id="insert-creator-wrap-${num}-${actIdx}" style="display:none;"></div>
+          ` : '';
+          return actCard + divider;
+        }).join('')
       : (typeof day.description === 'string' && !isDraft ? `<p class="a-desc" style="padding:12px 0">${esc(day.description)}</p>` : '<p class="a-desc" style="padding:12px 0">No activities listed.</p>');
 
     // If day has a description, show it above the activities
@@ -1976,9 +2253,14 @@ ${custom_notes}`.trim();
       </div>`;
     }
 
-    return `<div class="activity"${activityAttrs} data-day="${dayNum}" data-idx="${actIdx}" id="act-card-${dayNum}-${actIdx}">
+    const dragHandle = isDraft ? `<div class="a-drag-handle" title="Drag up or down to reorder"><i class="fa-solid fa-grip-vertical"></i></div>` : '';
+    const draggableAttr = isDraft ? ` draggable="true"` : '';
+    const draggableClass = isDraft ? ` is-draggable` : '';
+
+    return `<div class="activity${draggableClass}"${draggableAttr}${activityAttrs} data-day="${dayNum}" data-idx="${actIdx}" id="act-card-${dayNum}-${actIdx}">
       ${hoverActions}
       <div class="activity-main-content">
+        ${dragHandle}
         <span class="a-time"><span class="a-time-pill"><i class="fa-regular fa-clock"></i> ${esc(time)}</span></span>
         <div class="a-body">
           <div class="a-text">
@@ -2975,7 +3257,8 @@ ${custom_notes}`.trim();
     }
 
     // Start of day time: default 09:00 AM or original first activity time
-    let curMins = parseTimeMinutes(acts[0].time || '09:00 AM');
+    let firstMins = parseTimeMinutes(acts[0].time || '09:00 AM');
+    let curMins = (firstMins > 12 * 60 || firstMins < 8 * 60) ? (9 * 60) : firstMins;
     let cumulativeKm = 0.0;
     let totalTransitMin = 0;
     const newLegs = [];
@@ -3375,8 +3658,19 @@ ${custom_notes}`.trim();
               : null;
 
             if (day && day.activities) {
+              const oldAct = day.activities[actData.idx];
               day.activities[actData.idx] = newAct;
               recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
+
+              _undoHistory.push({
+                type: 'replace',
+                label: `Undo: Swap "${chosen.title}"`,
+                dayNum: actData.dayNum,
+                idx: actData.idx,
+                oldAct: oldAct,
+                newAct: newAct,
+              });
+
               closeAllInlineWidgets();
               toast(`Swapped in "${esc(chosen.title)}"! Timing and transit distance recalculated.`, 'ok');
               reRenderActivePlan();
@@ -3420,11 +3714,14 @@ ${custom_notes}`.trim();
       : null;
 
     if (day && day.activities && day.activities[actData.idx]) {
-      _lastRemoved = {
+      const removedAct = day.activities[actData.idx];
+      _undoHistory.push({
+        type: 'remove',
+        label: `Undo: Remove "${actData.title}"`,
         dayNum: actData.dayNum,
         idx: actData.idx,
-        actObj: day.activities[actData.idx],
-      };
+        actObj: removedAct,
+      });
       day.activities.splice(actData.idx, 1);
       recalculateDayScheduleAndDistances(day, dayRoute, finalPlan);
     } else if (cardEl) {
@@ -3432,7 +3729,7 @@ ${custom_notes}`.trim();
     }
 
     closeAllInlineWidgets();
-    toast(`Removed "${esc(actData.title)}" from Day ${actData.dayNum}. Transit and schedule recalculated. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
+    toast(`Removed "${esc(actData.title)}" from Day ${actData.dayNum}. Transit & schedule recalculated. <button onclick="window.undoRemove()" style="background:transparent;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-weight:bold;margin-left:8px;">Undo</button>`, 'ok');
     reRenderActivePlan();
   }
 
